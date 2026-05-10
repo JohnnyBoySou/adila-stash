@@ -454,6 +454,715 @@ func (g *GitHub) CreatePullRequest(owner, repo, base, head, title, body string) 
 	}, nil
 }
 
+type PullRequestSummary struct {
+	Number    int    `json:"number"`
+	HTMLURL   string `json:"htmlUrl"`
+	Title     string `json:"title"`
+	State     string `json:"state"`
+	Head      string `json:"head"`
+	Base      string `json:"base"`
+	Author    string `json:"author"`
+	AvatarURL string `json:"avatarUrl"`
+	UpdatedAt string `json:"updatedAt"`
+	Draft     bool   `json:"draft"`
+	Body      string `json:"body"`
+}
+
+// ListPullRequests lista PRs de owner/repo. state aceita "open", "closed" ou "all".
+func (g *GitHub) ListPullRequests(owner, repo, state string) ([]PullRequestSummary, error) {
+	if owner == "" || repo == "" {
+		return nil, errors.New("owner e repo obrigatórios")
+	}
+	if state == "" {
+		state = "open"
+	}
+	resp, err := g.apiRequest(
+		"GET",
+		"/repos/"+owner+"/"+repo+"/pulls?state="+state+"&per_page=50&sort=updated&direction=desc",
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("github listar PRs: %s — %s", resp.Status, strings.TrimSpace(string(bodyBytes)))
+	}
+	var raw []struct {
+		Number    int    `json:"number"`
+		HTMLURL   string `json:"html_url"`
+		Title     string `json:"title"`
+		State     string `json:"state"`
+		Body      string `json:"body"`
+		Draft     bool   `json:"draft"`
+		UpdatedAt string `json:"updated_at"`
+		User      struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"user"`
+		Head struct {
+			Ref string `json:"ref"`
+		} `json:"head"`
+		Base struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
+	}
+	if err := json.Unmarshal(bodyBytes, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]PullRequestSummary, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, PullRequestSummary{
+			Number:    r.Number,
+			HTMLURL:   r.HTMLURL,
+			Title:     r.Title,
+			State:     r.State,
+			Head:      r.Head.Ref,
+			Base:      r.Base.Ref,
+			Author:    r.User.Login,
+			AvatarURL: r.User.AvatarURL,
+			UpdatedAt: r.UpdatedAt,
+			Draft:     r.Draft,
+			Body:      r.Body,
+		})
+	}
+	return out, nil
+}
+
+// PullRequestDetail traz os dados completos de um pull request individual.
+type PullRequestDetail struct {
+	PullRequestSummary
+	HeadSHA             string `json:"headSha"`
+	BaseSHA             string `json:"baseSha"`
+	HeadRepoFullName    string `json:"headRepoFullName"`
+	Merged              bool   `json:"merged"`
+	Mergeable           *bool  `json:"mergeable,omitempty"`
+	MergeableState      string `json:"mergeableState"`
+	CommentsCount       int    `json:"commentsCount"`
+	ReviewCommentsCount int    `json:"reviewCommentsCount"`
+	Commits             int    `json:"commits"`
+	Additions           int    `json:"additions"`
+	Deletions           int    `json:"deletions"`
+	ChangedFiles        int    `json:"changedFiles"`
+	CreatedAt           string `json:"createdAt"`
+}
+
+// GetPullRequest busca os detalhes completos de um PR.
+func (g *GitHub) GetPullRequest(owner, repo string, number int) (*PullRequestDetail, error) {
+	if owner == "" || repo == "" || number <= 0 {
+		return nil, errors.New("parâmetros incompletos para buscar PR")
+	}
+	resp, err := g.apiRequest("GET", fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, number), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("github GET pull: %s — %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var raw struct {
+		Number    int    `json:"number"`
+		HTMLURL   string `json:"html_url"`
+		Title     string `json:"title"`
+		State     string `json:"state"`
+		Body      string `json:"body"`
+		Draft     bool   `json:"draft"`
+		Merged    bool   `json:"merged"`
+		Mergeable *bool  `json:"mergeable"`
+		MergeableState string `json:"mergeable_state"`
+		UpdatedAt string `json:"updated_at"`
+		CreatedAt string `json:"created_at"`
+		User      struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"user"`
+		Head struct {
+			Ref  string `json:"ref"`
+			SHA  string `json:"sha"`
+			Repo struct {
+				FullName string `json:"full_name"`
+			} `json:"repo"`
+		} `json:"head"`
+		Base struct {
+			Ref string `json:"ref"`
+			SHA string `json:"sha"`
+		} `json:"base"`
+		Comments       int `json:"comments"`
+		ReviewComments int `json:"review_comments"`
+		Commits        int `json:"commits"`
+		Additions      int `json:"additions"`
+		Deletions      int `json:"deletions"`
+		ChangedFiles   int `json:"changed_files"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	return &PullRequestDetail{
+		PullRequestSummary: PullRequestSummary{
+			Number:    raw.Number,
+			HTMLURL:   raw.HTMLURL,
+			Title:     raw.Title,
+			State:     raw.State,
+			Head:      raw.Head.Ref,
+			Base:      raw.Base.Ref,
+			Author:    raw.User.Login,
+			AvatarURL: raw.User.AvatarURL,
+			UpdatedAt: raw.UpdatedAt,
+			Draft:     raw.Draft,
+			Body:      raw.Body,
+		},
+		HeadSHA:             raw.Head.SHA,
+		BaseSHA:             raw.Base.SHA,
+		HeadRepoFullName:    raw.Head.Repo.FullName,
+		Merged:              raw.Merged,
+		Mergeable:           raw.Mergeable,
+		MergeableState:      raw.MergeableState,
+		CommentsCount:       raw.Comments,
+		ReviewCommentsCount: raw.ReviewComments,
+		Commits:             raw.Commits,
+		Additions:           raw.Additions,
+		Deletions:           raw.Deletions,
+		ChangedFiles:        raw.ChangedFiles,
+		CreatedAt:           raw.CreatedAt,
+	}, nil
+}
+
+// IssueComment é um comentário de timeline (não atrelado ao diff).
+type IssueComment struct {
+	ID        int64  `json:"id"`
+	Body      string `json:"body"`
+	Author    string `json:"author"`
+	AvatarURL string `json:"avatarUrl"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+	HTMLURL   string `json:"htmlUrl"`
+}
+
+// ListIssueComments lista comentários da timeline do PR (a API trata PR como issue).
+func (g *GitHub) ListIssueComments(owner, repo string, number int) ([]IssueComment, error) {
+	if owner == "" || repo == "" || number <= 0 {
+		return nil, errors.New("parâmetros incompletos")
+	}
+	resp, err := g.apiRequest("GET",
+		fmt.Sprintf("/repos/%s/%s/issues/%d/comments?per_page=100", owner, repo, number), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("github listar comentários: %s — %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var raw []struct {
+		ID        int64  `json:"id"`
+		Body      string `json:"body"`
+		HTMLURL   string `json:"html_url"`
+		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
+		User      struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]IssueComment, 0, len(raw))
+	for _, c := range raw {
+		out = append(out, IssueComment{
+			ID:        c.ID,
+			Body:      c.Body,
+			Author:    c.User.Login,
+			AvatarURL: c.User.AvatarURL,
+			CreatedAt: c.CreatedAt,
+			UpdatedAt: c.UpdatedAt,
+			HTMLURL:   c.HTMLURL,
+		})
+	}
+	return out, nil
+}
+
+// CreateIssueComment publica um comentário na timeline do PR.
+func (g *GitHub) CreateIssueComment(owner, repo string, number int, body string) (*IssueComment, error) {
+	if owner == "" || repo == "" || number <= 0 || strings.TrimSpace(body) == "" {
+		return nil, errors.New("parâmetros incompletos para comentar")
+	}
+	resp, err := g.apiRequest("POST",
+		fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, number),
+		map[string]any{"body": body})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 201 {
+		return nil, fmt.Errorf("github comentar: %s — %s", resp.Status, strings.TrimSpace(string(rb)))
+	}
+	var raw struct {
+		ID        int64  `json:"id"`
+		Body      string `json:"body"`
+		HTMLURL   string `json:"html_url"`
+		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
+		User      struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(rb, &raw); err != nil {
+		return nil, err
+	}
+	return &IssueComment{
+		ID: raw.ID, Body: raw.Body, Author: raw.User.Login,
+		AvatarURL: raw.User.AvatarURL, CreatedAt: raw.CreatedAt,
+		UpdatedAt: raw.UpdatedAt, HTMLURL: raw.HTMLURL,
+	}, nil
+}
+
+// PullRequestReview representa uma review submetida (approve / request changes / comment).
+type PullRequestReview struct {
+	ID          int64  `json:"id"`
+	Body        string `json:"body"`
+	State       string `json:"state"`
+	Author      string `json:"author"`
+	AvatarURL   string `json:"avatarUrl"`
+	SubmittedAt string `json:"submittedAt"`
+	HTMLURL     string `json:"htmlUrl"`
+	CommitID    string `json:"commitId"`
+}
+
+// ListReviews lista reviews do PR.
+func (g *GitHub) ListReviews(owner, repo string, number int) ([]PullRequestReview, error) {
+	if owner == "" || repo == "" || number <= 0 {
+		return nil, errors.New("parâmetros incompletos")
+	}
+	resp, err := g.apiRequest("GET",
+		fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews?per_page=100", owner, repo, number), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("github listar reviews: %s — %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var raw []struct {
+		ID          int64  `json:"id"`
+		Body        string `json:"body"`
+		State       string `json:"state"`
+		HTMLURL     string `json:"html_url"`
+		SubmittedAt string `json:"submitted_at"`
+		CommitID    string `json:"commit_id"`
+		User        struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]PullRequestReview, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, PullRequestReview{
+			ID: r.ID, Body: r.Body, State: r.State,
+			Author: r.User.Login, AvatarURL: r.User.AvatarURL,
+			SubmittedAt: r.SubmittedAt, HTMLURL: r.HTMLURL,
+			CommitID: r.CommitID,
+		})
+	}
+	return out, nil
+}
+
+// ReviewComment é um comentário inline ancorado a uma linha do diff.
+type ReviewComment struct {
+	ID                  int64  `json:"id"`
+	PullRequestReviewID int64  `json:"pullRequestReviewId"`
+	Body                string `json:"body"`
+	Path                string `json:"path"`
+	Line                int    `json:"line"`
+	OriginalLine        int    `json:"originalLine"`
+	Side                string `json:"side"`
+	DiffHunk            string `json:"diffHunk"`
+	Author              string `json:"author"`
+	AvatarURL           string `json:"avatarUrl"`
+	CreatedAt           string `json:"createdAt"`
+	UpdatedAt           string `json:"updatedAt"`
+	HTMLURL             string `json:"htmlUrl"`
+	CommitID            string `json:"commitId"`
+	InReplyToID         int64  `json:"inReplyToId"`
+}
+
+// ListReviewComments lista comentários inline (por linha) do PR.
+func (g *GitHub) ListReviewComments(owner, repo string, number int) ([]ReviewComment, error) {
+	if owner == "" || repo == "" || number <= 0 {
+		return nil, errors.New("parâmetros incompletos")
+	}
+	resp, err := g.apiRequest("GET",
+		fmt.Sprintf("/repos/%s/%s/pulls/%d/comments?per_page=100", owner, repo, number), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("github listar review comments: %s — %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var raw []struct {
+		ID                  int64  `json:"id"`
+		PullRequestReviewID int64  `json:"pull_request_review_id"`
+		Body                string `json:"body"`
+		Path                string `json:"path"`
+		Line                int    `json:"line"`
+		OriginalLine        int    `json:"original_line"`
+		Side                string `json:"side"`
+		DiffHunk            string `json:"diff_hunk"`
+		HTMLURL             string `json:"html_url"`
+		CreatedAt           string `json:"created_at"`
+		UpdatedAt           string `json:"updated_at"`
+		CommitID            string `json:"commit_id"`
+		InReplyToID         int64  `json:"in_reply_to_id"`
+		User                struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]ReviewComment, 0, len(raw))
+	for _, c := range raw {
+		out = append(out, ReviewComment{
+			ID: c.ID, PullRequestReviewID: c.PullRequestReviewID,
+			Body: c.Body, Path: c.Path, Line: c.Line,
+			OriginalLine: c.OriginalLine, Side: c.Side, DiffHunk: c.DiffHunk,
+			Author: c.User.Login, AvatarURL: c.User.AvatarURL,
+			CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+			HTMLURL: c.HTMLURL, CommitID: c.CommitID,
+			InReplyToID: c.InReplyToID,
+		})
+	}
+	return out, nil
+}
+
+// PullRequestCommit representa um commit listado no PR.
+type PullRequestCommit struct {
+	SHA         string `json:"sha"`
+	ShortSHA    string `json:"shortSha"`
+	Message     string `json:"message"`
+	Subject     string `json:"subject"`
+	AuthorName  string `json:"authorName"`
+	AuthorEmail string `json:"authorEmail"`
+	AuthorLogin string `json:"authorLogin"`
+	AvatarURL   string `json:"avatarUrl"`
+	AuthoredAt  string `json:"authoredAt"`
+	HTMLURL     string `json:"htmlUrl"`
+}
+
+// ListPullRequestCommits lista os commits incluídos no PR (ordem cronológica).
+func (g *GitHub) ListPullRequestCommits(owner, repo string, number int) ([]PullRequestCommit, error) {
+	if owner == "" || repo == "" || number <= 0 {
+		return nil, errors.New("parâmetros incompletos")
+	}
+	resp, err := g.apiRequest("GET",
+		fmt.Sprintf("/repos/%s/%s/pulls/%d/commits?per_page=100", owner, repo, number), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("github listar commits: %s — %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var raw []struct {
+		SHA     string `json:"sha"`
+		HTMLURL string `json:"html_url"`
+		Commit  struct {
+			Message string `json:"message"`
+			Author  struct {
+				Name  string `json:"name"`
+				Email string `json:"email"`
+				Date  string `json:"date"`
+			} `json:"author"`
+		} `json:"commit"`
+		Author *struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"author"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]PullRequestCommit, 0, len(raw))
+	for _, c := range raw {
+		short := c.SHA
+		if len(short) > 7 {
+			short = short[:7]
+		}
+		subject := c.Commit.Message
+		if i := strings.IndexByte(subject, '\n'); i >= 0 {
+			subject = subject[:i]
+		}
+		login := ""
+		avatar := ""
+		if c.Author != nil {
+			login = c.Author.Login
+			avatar = c.Author.AvatarURL
+		}
+		out = append(out, PullRequestCommit{
+			SHA: c.SHA, ShortSHA: short,
+			Message: c.Commit.Message, Subject: subject,
+			AuthorName: c.Commit.Author.Name, AuthorEmail: c.Commit.Author.Email,
+			AuthorLogin: login, AvatarURL: avatar,
+			AuthoredAt: c.Commit.Author.Date, HTMLURL: c.HTMLURL,
+		})
+	}
+	return out, nil
+}
+
+// PullRequestFile representa um arquivo modificado no PR.
+type PullRequestFile struct {
+	Filename         string `json:"filename"`
+	Status           string `json:"status"`
+	Additions        int    `json:"additions"`
+	Deletions        int    `json:"deletions"`
+	Changes          int    `json:"changes"`
+	Patch            string `json:"patch"`
+	SHA              string `json:"sha"`
+	PreviousFilename string `json:"previousFilename"`
+}
+
+// ListPullRequestFiles lista arquivos modificados (com patch unificado).
+func (g *GitHub) ListPullRequestFiles(owner, repo string, number int) ([]PullRequestFile, error) {
+	if owner == "" || repo == "" || number <= 0 {
+		return nil, errors.New("parâmetros incompletos")
+	}
+	resp, err := g.apiRequest("GET",
+		fmt.Sprintf("/repos/%s/%s/pulls/%d/files?per_page=100", owner, repo, number), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("github listar arquivos: %s — %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var raw []struct {
+		Filename         string `json:"filename"`
+		Status           string `json:"status"`
+		Additions        int    `json:"additions"`
+		Deletions        int    `json:"deletions"`
+		Changes          int    `json:"changes"`
+		Patch            string `json:"patch"`
+		SHA              string `json:"sha"`
+		PreviousFilename string `json:"previous_filename"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]PullRequestFile, 0, len(raw))
+	for _, f := range raw {
+		out = append(out, PullRequestFile{
+			Filename: f.Filename, Status: f.Status,
+			Additions: f.Additions, Deletions: f.Deletions,
+			Changes: f.Changes, Patch: f.Patch, SHA: f.SHA,
+			PreviousFilename: f.PreviousFilename,
+		})
+	}
+	return out, nil
+}
+
+// ReviewCommentInput descreve um comentário inline a ser anexado em uma review.
+type ReviewCommentInput struct {
+	Path string `json:"path"`
+	Line int    `json:"line"`
+	Side string `json:"side,omitempty"`
+	Body string `json:"body"`
+}
+
+// CreateReview submete uma review no PR. event aceita APPROVE, REQUEST_CHANGES,
+// COMMENT (ou vazio para review pendente). comments anexa comentários inline.
+func (g *GitHub) CreateReview(owner, repo string, number int, event, body string, comments []ReviewCommentInput) (*PullRequestReview, error) {
+	if owner == "" || repo == "" || number <= 0 {
+		return nil, errors.New("parâmetros incompletos para review")
+	}
+	switch event {
+	case "", "APPROVE", "REQUEST_CHANGES", "COMMENT":
+	default:
+		return nil, fmt.Errorf("event inválido: %s", event)
+	}
+	payload := map[string]any{}
+	if event != "" {
+		payload["event"] = event
+	}
+	if strings.TrimSpace(body) != "" {
+		payload["body"] = body
+	}
+	if len(comments) > 0 {
+		cs := make([]map[string]any, 0, len(comments))
+		for _, c := range comments {
+			if strings.TrimSpace(c.Body) == "" || c.Path == "" || c.Line <= 0 {
+				continue
+			}
+			item := map[string]any{
+				"path": c.Path,
+				"line": c.Line,
+				"body": c.Body,
+			}
+			if c.Side != "" {
+				item["side"] = c.Side
+			}
+			cs = append(cs, item)
+		}
+		if len(cs) > 0 {
+			payload["comments"] = cs
+		}
+	}
+	if event == "REQUEST_CHANGES" || event == "COMMENT" {
+		_, hasComments := payload["comments"]
+		if strings.TrimSpace(body) == "" && !hasComments {
+			return nil, errors.New("review precisa de body ou comentários inline")
+		}
+	}
+	resp, err := g.apiRequest("POST",
+		fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", owner, repo, number), payload)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("github criar review: %s — %s", resp.Status, strings.TrimSpace(string(rb)))
+	}
+	var raw struct {
+		ID          int64  `json:"id"`
+		Body        string `json:"body"`
+		State       string `json:"state"`
+		HTMLURL     string `json:"html_url"`
+		SubmittedAt string `json:"submitted_at"`
+		CommitID    string `json:"commit_id"`
+		User        struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(rb, &raw); err != nil {
+		return nil, err
+	}
+	return &PullRequestReview{
+		ID: raw.ID, Body: raw.Body, State: raw.State,
+		Author: raw.User.Login, AvatarURL: raw.User.AvatarURL,
+		SubmittedAt: raw.SubmittedAt, HTMLURL: raw.HTMLURL,
+		CommitID: raw.CommitID,
+	}, nil
+}
+
+// CreateReviewComment cria um comentário inline solto (não atrelado a uma review).
+func (g *GitHub) CreateReviewComment(owner, repo string, number int, commitID, path string, line int, side, body string) (*ReviewComment, error) {
+	if owner == "" || repo == "" || number <= 0 || commitID == "" || path == "" || line <= 0 || strings.TrimSpace(body) == "" {
+		return nil, errors.New("parâmetros incompletos para review comment")
+	}
+	if side == "" {
+		side = "RIGHT"
+	}
+	payload := map[string]any{
+		"body":      body,
+		"commit_id": commitID,
+		"path":      path,
+		"line":      line,
+		"side":      side,
+	}
+	resp, err := g.apiRequest("POST",
+		fmt.Sprintf("/repos/%s/%s/pulls/%d/comments", owner, repo, number), payload)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 201 {
+		return nil, fmt.Errorf("github review comment: %s — %s", resp.Status, strings.TrimSpace(string(rb)))
+	}
+	var raw struct {
+		ID                  int64  `json:"id"`
+		PullRequestReviewID int64  `json:"pull_request_review_id"`
+		Body                string `json:"body"`
+		Path                string `json:"path"`
+		Line                int    `json:"line"`
+		OriginalLine        int    `json:"original_line"`
+		Side                string `json:"side"`
+		DiffHunk            string `json:"diff_hunk"`
+		HTMLURL             string `json:"html_url"`
+		CreatedAt           string `json:"created_at"`
+		UpdatedAt           string `json:"updated_at"`
+		CommitID            string `json:"commit_id"`
+		User                struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(rb, &raw); err != nil {
+		return nil, err
+	}
+	return &ReviewComment{
+		ID: raw.ID, PullRequestReviewID: raw.PullRequestReviewID,
+		Body: raw.Body, Path: raw.Path, Line: raw.Line, OriginalLine: raw.OriginalLine,
+		Side: raw.Side, DiffHunk: raw.DiffHunk,
+		Author: raw.User.Login, AvatarURL: raw.User.AvatarURL,
+		CreatedAt: raw.CreatedAt, UpdatedAt: raw.UpdatedAt,
+		HTMLURL: raw.HTMLURL, CommitID: raw.CommitID,
+	}, nil
+}
+
+// ReplyToReviewComment responde a um comentário inline existente (mesma thread).
+func (g *GitHub) ReplyToReviewComment(owner, repo string, number int, inReplyTo int64, body string) (*ReviewComment, error) {
+	if owner == "" || repo == "" || number <= 0 || inReplyTo <= 0 || strings.TrimSpace(body) == "" {
+		return nil, errors.New("parâmetros incompletos para resposta")
+	}
+	payload := map[string]any{"body": body, "in_reply_to": inReplyTo}
+	resp, err := g.apiRequest("POST",
+		fmt.Sprintf("/repos/%s/%s/pulls/%d/comments", owner, repo, number), payload)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 201 {
+		return nil, fmt.Errorf("github reply review comment: %s — %s", resp.Status, strings.TrimSpace(string(rb)))
+	}
+	var raw struct {
+		ID                  int64  `json:"id"`
+		PullRequestReviewID int64  `json:"pull_request_review_id"`
+		Body                string `json:"body"`
+		Path                string `json:"path"`
+		Line                int    `json:"line"`
+		OriginalLine        int    `json:"original_line"`
+		Side                string `json:"side"`
+		DiffHunk            string `json:"diff_hunk"`
+		HTMLURL             string `json:"html_url"`
+		CreatedAt           string `json:"created_at"`
+		UpdatedAt           string `json:"updated_at"`
+		CommitID            string `json:"commit_id"`
+		InReplyToID         int64  `json:"in_reply_to_id"`
+		User                struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(rb, &raw); err != nil {
+		return nil, err
+	}
+	return &ReviewComment{
+		ID: raw.ID, PullRequestReviewID: raw.PullRequestReviewID,
+		Body: raw.Body, Path: raw.Path, Line: raw.Line, OriginalLine: raw.OriginalLine,
+		Side: raw.Side, DiffHunk: raw.DiffHunk,
+		Author: raw.User.Login, AvatarURL: raw.User.AvatarURL,
+		CreatedAt: raw.CreatedAt, UpdatedAt: raw.UpdatedAt,
+		HTMLURL: raw.HTMLURL, CommitID: raw.CommitID,
+		InReplyToID: raw.InReplyToID,
+	}, nil
+}
+
 // PickCloneDirectory abre o dialog nativo de seleção de pasta — útil para o
 // frontend antes de chamar CloneRepo.
 func (g *GitHub) PickCloneDirectory() (string, error) {

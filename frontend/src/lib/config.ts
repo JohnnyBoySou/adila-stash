@@ -14,4 +14,5 @@ export const config = {
 
 export const CONFIG_KEYS = {
   repoPaths: "repos.paths",
+  repoOrg: "repos.org",
 } as const;

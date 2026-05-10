@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -69,6 +71,10 @@ type DiffResult struct {
 	NewText  string `json:"newText"`
 	Status   string `json:"status"`
 	IsBinary bool   `json:"isBinary"`
+	// data URIs ("data:image/png;base64,...") quando o arquivo é imagem.
+	// Vazios para arquivos não-imagem ou lados ausentes (added/deleted).
+	OldImage string `json:"oldImage,omitempty"`
+	NewImage string `json:"newImage,omitempty"`
 }
 
 type CommitFileDiff struct {
@@ -78,6 +84,8 @@ type CommitFileDiff struct {
 	NewText  string `json:"newText"`
 	Status   string `json:"status"`
 	IsBinary bool   `json:"isBinary"`
+	OldImage string `json:"oldImage,omitempty"`
+	NewImage string `json:"newImage,omitempty"`
 }
 
 type CommitDiffResult struct {
@@ -237,6 +245,59 @@ func (s *GitService) StageFile(repoPath, file string) error {
 	}
 	_, err = wt.Add(file)
 	return err
+}
+
+// StageFiles adiciona vários arquivos ao index em uma única chamada ao git.
+// Muito mais rápido que iterar StageFile para seleções grandes.
+func (s *GitService) StageFiles(repoPath string, files []string) error {
+	if len(files) == 0 {
+		return nil
+	}
+	args := append([]string{"-C", repoPath, "add", "--"}, files...)
+	cmd := exec.Command("git", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git add falhou: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// UnstageFiles remove vários arquivos do index em uma única chamada.
+func (s *GitService) UnstageFiles(repoPath string, files []string) error {
+	if len(files) == 0 {
+		return nil
+	}
+	args := append([]string{"-C", repoPath, "reset", "HEAD", "--"}, files...)
+	cmd := exec.Command("git", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// `git reset HEAD --` falha em repos sem commits; tenta `git rm --cached` como fallback
+		rmArgs := append([]string{"-C", repoPath, "rm", "--cached", "--"}, files...)
+		rmOut, rmErr := exec.Command("git", rmArgs...).CombinedOutput()
+		if rmErr != nil {
+			return fmt.Errorf("git reset falhou: %s", strings.TrimSpace(string(out)))
+		}
+		_ = rmOut
+	}
+	return nil
+}
+
+// DiscardFiles descarta as mudanças locais de vários arquivos.
+// `tracked` e `untracked` são separados para usar o comando git correto.
+func (s *GitService) DiscardFiles(repoPath string, trackedFiles, untrackedFiles []string) error {
+	if len(trackedFiles) > 0 {
+		args := append([]string{"-C", repoPath, "checkout", "--"}, trackedFiles...)
+		cmd := exec.Command("git", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("git checkout falhou: %s", strings.TrimSpace(string(out)))
+		}
+	}
+	if len(untrackedFiles) > 0 {
+		args := append([]string{"-C", repoPath, "clean", "-fd", "--"}, untrackedFiles...)
+		cmd := exec.Command("git", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("git clean falhou: %s", strings.TrimSpace(string(out)))
+		}
+	}
+	return nil
 }
 
 func (s *GitService) UnstageFile(repoPath, file string) error {
@@ -478,6 +539,67 @@ func (s *GitService) CreateBranch(repoPath, name string, checkout bool) error {
 	return nil
 }
 
+// StashPush salva alterações locais no stash. Usa o git binário do sistema
+// para suporte completo a stash (go-git ainda não suporta).
+func (s *GitService) StashPush(repoPath, message string) error {
+	args := []string{"-C", repoPath, "stash", "push", "--include-untracked"}
+	if strings.TrimSpace(message) != "" {
+		args = append(args, "-m", message)
+	}
+	cmd := exec.Command("git", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git stash falhou: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// StashPop reaplica o stash mais recente e o remove da pilha.
+func (s *GitService) StashPop(repoPath string) error {
+	cmd := exec.Command("git", "-C", repoPath, "stash", "pop")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git stash pop falhou: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// DiscardLocalChanges descarta TODAS as alterações locais (tracked) e remove
+// arquivos não-rastreados. Operação destrutiva — só deve ser chamada após
+// confirmação explícita do usuário.
+func (s *GitService) DiscardLocalChanges(repoPath string) error {
+	reset := exec.Command("git", "-C", repoPath, "reset", "--hard", "HEAD")
+	if out, err := reset.CombinedOutput(); err != nil {
+		return fmt.Errorf("git reset falhou: %s", strings.TrimSpace(string(out)))
+	}
+	clean := exec.Command("git", "-C", repoPath, "clean", "-fd")
+	if out, err := clean.CombinedOutput(); err != nil {
+		return fmt.Errorf("git clean falhou: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// DiscardFile descarta as mudanças locais de um arquivo:
+//   - tracked (modificado/deletado): `git checkout -- <file>`
+//   - untracked: remove o arquivo do disco via `git clean -f -- <file>`
+func (s *GitService) DiscardFile(repoPath, file string, untracked bool) error {
+	if strings.TrimSpace(file) == "" {
+		return errors.New("nome do arquivo vazio")
+	}
+	if untracked {
+		cmd := exec.Command("git", "-C", repoPath, "clean", "-fd", "--", file)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("git clean falhou: %s", strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	cmd := exec.Command("git", "-C", repoPath, "checkout", "--", file)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git checkout falhou: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // Push publica a branch local em origin com -u. Usa o git binário do sistema
 // para aproveitar credential helpers e SSH config.
 func (s *GitService) Push(repoPath, branchName string) error {
@@ -490,6 +612,39 @@ func (s *GitService) Push(repoPath, branchName string) error {
 		return fmt.Errorf("git push falhou: %s", strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+type AheadBehind struct {
+	Ahead  int `json:"ahead"`
+	Behind int `json:"behind"`
+}
+
+// AheadBehind compara duas refs (ex.: head="feature", base="main") usando
+// `git rev-list --left-right --count base...head`. Retorna quantos commits
+// `head` está à frente de `base` (Ahead) e atrás (Behind).
+func (s *GitService) AheadBehind(repoPath, base, head string) (*AheadBehind, error) {
+	if strings.TrimSpace(base) == "" || strings.TrimSpace(head) == "" {
+		return nil, errors.New("base e head obrigatórios")
+	}
+	spec := base + "..." + head
+	cmd := exec.Command("git", "-C", repoPath, "rev-list", "--left-right", "--count", spec)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("git rev-list falhou: %s", strings.TrimSpace(string(out)))
+	}
+	parts := strings.Fields(strings.TrimSpace(string(out)))
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("saída inesperada: %q", string(out))
+	}
+	behind, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return nil, err
+	}
+	ahead, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return nil, err
+	}
+	return &AheadBehind{Ahead: ahead, Behind: behind}, nil
 }
 
 func (s *GitService) RemoteInfo(repoPath string) (*RemoteInfo, error) {
@@ -570,6 +725,21 @@ func (s *GitService) FileDiff(repoPath, file string, staged bool) (*DiffResult, 
 		res.OldText = headText
 		res.NewText = text
 		res.Status = statusFromBoth(headFound, found)
+		if mime := imageMime(file); mime != "" {
+			res.IsBinary = true
+			res.OldText = ""
+			res.NewText = ""
+			if headFound {
+				res.OldImage = dataURI(mime, []byte(headText))
+			}
+			if found {
+				res.NewImage = dataURI(mime, []byte(text))
+			}
+		} else if isBinary([]byte(text)) || isBinary([]byte(headText)) {
+			res.IsBinary = true
+			res.OldText = ""
+			res.NewText = ""
+		}
 	} else {
 		fullPath := filepath.Join(repoPath, file)
 		data, err := os.ReadFile(fullPath)
@@ -581,7 +751,17 @@ func (s *GitService) FileDiff(repoPath, file string, staged bool) (*DiffResult, 
 		res.OldText = headText
 		res.NewText = newText
 		res.Status = statusFromBoth(headFound, newFound)
-		if isBinary(data) {
+		if mime := imageMime(file); mime != "" {
+			res.IsBinary = true
+			res.OldText = ""
+			res.NewText = ""
+			if headFound {
+				res.OldImage = dataURI(mime, []byte(headText))
+			}
+			if newFound {
+				res.NewImage = dataURI(mime, data)
+			}
+		} else if isBinary(data) {
 			res.IsBinary = true
 			res.OldText = ""
 			res.NewText = ""
@@ -734,7 +914,23 @@ func (s *GitService) CommitDiff(repoPath, hash string) (*CommitDiffResult, error
 			return nil, err
 		}
 
-		if oldBin || newBin {
+		if mime := imageMime(entry.Path); mime != "" {
+			entry.IsBinary = true
+			if fromFile != nil {
+				raw, err := blobBytes(fromFile)
+				if err != nil {
+					return nil, err
+				}
+				entry.OldImage = dataURI(mime, raw)
+			}
+			if toFile != nil {
+				raw, err := blobBytes(toFile)
+				if err != nil {
+					return nil, err
+				}
+				entry.NewImage = dataURI(mime, raw)
+			}
+		} else if oldBin || newBin {
 			entry.IsBinary = true
 		} else {
 			entry.OldText = oldText
@@ -791,6 +987,25 @@ func (s *GitService) PickRepoFolder() (string, error) {
 	return abs, nil
 }
 
+// blobBytes lê o conteúdo bruto do blob como []byte. Necessário para arquivos
+// binários (imagens) onde precisamos da representação byte-a-byte para gerar
+// data URIs.
+func blobBytes(f *object.File) ([]byte, error) {
+	if f == nil {
+		return nil, nil
+	}
+	rc, err := f.Reader()
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, rc); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func blobText(f *object.File) (string, bool, error) {
 	if f == nil {
 		return "", false, nil
@@ -807,6 +1022,31 @@ func blobText(f *object.File) (string, bool, error) {
 		return "", false, err
 	}
 	return contents, false, nil
+}
+
+// imageMimes mapeia extensões para mime types renderizáveis em <img>. SVG é
+// texto, mas costuma fazer sentido visualizar a versão renderizada também.
+var imageMimes = map[string]string{
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+	".bmp":  "image/bmp",
+	".ico":  "image/x-icon",
+	".svg":  "image/svg+xml",
+	".avif": "image/avif",
+}
+
+func imageMime(path string) string {
+	return imageMimes[strings.ToLower(filepath.Ext(path))]
+}
+
+func dataURI(mime string, data []byte) string {
+	if mime == "" || len(data) == 0 {
+		return ""
+	}
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
 }
 
 func isBinary(data []byte) bool {

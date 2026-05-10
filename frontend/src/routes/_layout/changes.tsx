@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import { ChangesPanel } from "@/components/ChangesPanel";
 import { DiffViewer } from "@/components/DiffViewer";
+import { ResizableX } from "@/components/ResizableX";
 import { useRepo } from "@/lib/repo-context";
 
 export const Route = createFileRoute("/_layout/changes")({
@@ -19,20 +20,35 @@ function ChangesView() {
     diffBusy,
     stage,
     unstage,
+    discardFile,
+    stageMany,
+    unstageMany,
+    discardMany,
     commit,
   } = useRepo();
 
   return (
     <>
-      <ChangesPanel
-        status={status}
-        selected={selectedFile}
-        onSelect={setSelectedFile}
-        onStage={stage}
-        onUnstage={unstage}
-        onCommit={commit}
-        busy={statusBusy}
-      />
+      <ResizableX
+        storageKey="stash:sidebar-width:changes"
+        defaultWidth={320}
+        min={220}
+        max={560}
+      >
+        <ChangesPanel
+          status={status}
+          selected={selectedFile}
+          onSelect={setSelectedFile}
+          onStage={stage}
+          onUnstage={unstage}
+          onDiscard={discardFile}
+          onStageMany={stageMany}
+          onUnstageMany={unstageMany}
+          onDiscardMany={discardMany}
+          onCommit={commit}
+          busy={statusBusy}
+        />
+      </ResizableX>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={selectedFile?.path ?? "none"}

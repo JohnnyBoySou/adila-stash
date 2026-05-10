@@ -7,6 +7,7 @@ import { FileDiff, GitCommit, Loader2, Search, X } from "lucide-react";
 import { DiffViewer } from "@/components/DiffViewer";
 import { HistoryPanel } from "@/components/HistoryPanel";
 import { Mascot } from "@/components/Mascot";
+import { ResizableX } from "@/components/ResizableX";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -24,6 +25,7 @@ function pickMsg<T>(arr: readonly T[]): T {
 }
 import { useRepo } from "@/lib/repo-context";
 import { relativeTime } from "@/lib/format";
+import { lineDiffCounts } from "@/lib/line-diff";
 import { cn } from "@/lib/utils";
 import type { CommitFileDiff } from "@/lib/git";
 
@@ -43,6 +45,19 @@ function HistoryView() {
 
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [fileQuery, setFileQuery] = useState("");
+
+  const fileCounts = useMemo(() => {
+    const map = new Map<string, { add: number; del: number }>();
+    if (!commitDiff) return map;
+    for (const f of commitDiff.files) {
+      if (f.isBinary) {
+        map.set(f.path, { add: 0, del: 0 });
+      } else {
+        map.set(f.path, lineDiffCounts(f.oldText, f.newText));
+      }
+    }
+    return map;
+  }, [commitDiff]);
 
   const filteredFiles = useMemo(() => {
     if (!commitDiff) return [];
@@ -86,6 +101,8 @@ function HistoryView() {
             newText: selectedFile.newText,
             status: selectedFile.status,
             isBinary: selectedFile.isBinary,
+            oldImage: selectedFile.oldImage,
+            newImage: selectedFile.newImage,
           }
         : null,
     [selectedFile],
@@ -93,27 +110,40 @@ function HistoryView() {
 
   return (
     <>
-      <HistoryPanel
-        commits={commits}
-        selected={selectedCommit}
-        onSelect={(c) => {
-          setSelectedCommit(c);
-          setSelectedPath(null);
-          setFileQuery("");
-        }}
-        loading={logBusy}
-      />
+      <ResizableX
+        storageKey="stash:sidebar-width:history"
+        defaultWidth={320}
+        min={220}
+        max={560}
+      >
+        <HistoryPanel
+          commits={commits}
+          selected={selectedCommit}
+          onSelect={(c) => {
+            setSelectedCommit(c);
+            setSelectedPath(null);
+            setFileQuery("");
+          }}
+          loading={logBusy}
+        />
+      </ResizableX>
 
-      <AnimatePresence mode="wait" initial={false}>
-        {selectedCommit ? (
-          <motion.div
-            key={selectedCommit.hash}
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -8 }}
-            transition={{ duration: 0.16, ease: "easeOut" }}
-            className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-background"
-          >
+      {selectedCommit ? (
+        <ResizableX
+          storageKey="stash:sidebar-width:history-files"
+          defaultWidth={288}
+          min={220}
+          max={520}
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={selectedCommit.hash}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className="flex h-full w-full flex-col border-r border-border"
+            >
             <div className="flex h-12 shrink-0 items-center gap-2 px-3 text-sm font-semibold">
               <GitCommit className="size-4 text-muted-foreground" />
               <span className="font-mono text-xs">{selectedCommit.shortHash}</span>
@@ -191,14 +221,28 @@ function HistoryView() {
                     <button
                       onClick={() => setSelectedPath(f.path)}
                       className={cn(
-                        "flex w-full items-center gap-2 border-b border-border/50 px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent",
+                        "flex w-full items-center justify-between gap-2 border-b border-border/50 px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent",
                         selectedPath === f.path && "bg-accent",
                       )}
                     >
-                      <FileDiff className="size-3 shrink-0 text-muted-foreground" />
-                      <span className="flex-1 truncate font-mono">{f.path}</span>
-                      <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[9px] uppercase text-muted-foreground">
-                        {f.status}
+                      <span className="flex min-w-0 flex-1 items-center gap-2" title={f.path}>
+                        <FileDiff className="size-3 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate font-mono">{f.path}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums">
+                        {(() => {
+                          const c = fileCounts.get(f.path);
+                          if (!c || (c.add === 0 && c.del === 0)) return null;
+                          return (
+                            <>
+                              <span className="text-[color:var(--added)]">+{c.add}</span>
+                              <span className="text-[color:var(--deleted)]">−{c.del}</span>
+                            </>
+                          );
+                        })()}
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] uppercase text-muted-foreground">
+                          {f.status}
+                        </span>
                       </span>
                     </button>
                   </motion.li>
@@ -206,19 +250,20 @@ function HistoryView() {
               </ul>
             </ScrollArea>
           </motion.div>
-        ) : (
-          <motion.div
-            key="empty"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.16 }}
-            className="flex flex-1 items-center justify-center"
-          >
-            <Mascot message={pickMsg(EMPTY_COMMIT_MESSAGES)} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </AnimatePresence>
+        </ResizableX>
+      ) : (
+        <motion.div
+          key="empty"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.16 }}
+          className="flex flex-1 items-center justify-center"
+        >
+          <Mascot message={pickMsg(EMPTY_COMMIT_MESSAGES)} />
+        </motion.div>
+      )}
 
       {selectedCommit && (
         <AnimatePresence mode="wait" initial={false}>

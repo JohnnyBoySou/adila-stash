@@ -1,11 +1,12 @@
+import { useEffect } from "react";
 import { Outlet, createFileRoute, Link, useLocation, useRouter } from "@tanstack/react-router";
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { Settings as SettingsIcon } from "lucide-react";
 
 import { BranchSelector } from "@/components/BranchSelector";
 import { GitHubLoginButton } from "@/components/GitHubLoginButton";
 import { RepoSidebar } from "@/components/RepoSidebar";
+import { StashiButton } from "@/components/StashiButton";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { WindowTitleBar } from "@/components/WindowTitleBar";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
@@ -39,6 +40,13 @@ function Shell() {
     ? status.staged.length + status.unstaged.length + status.untracked.length
     : 0;
 
+  useEffect(() => {
+    if (!activePath) return;
+    if (location.pathname === "/welcome" || location.pathname === "/") {
+      void router.navigate({ to: "/changes" });
+    }
+  }, [activePath, location.pathname, router]);
+
   useHotkey("Mod+B", (e) => {
     e.preventDefault();
     toggleSidebar();
@@ -56,9 +64,20 @@ function Shell() {
     void router.navigate({ to: "/history" });
   }, { enabled: Boolean(activeRepo) });
 
+  useHotkey("Mod+3", (e) => {
+    if (!activeRepo) return;
+    e.preventDefault();
+    void router.navigate({ to: "/pull-requests" });
+  }, { enabled: Boolean(activeRepo) });
+
   useHotkey("Mod+,", (e) => {
     e.preventDefault();
     void router.navigate({ to: "/settings" });
+  });
+
+  useHotkey("Mod+N", (e) => {
+    e.preventDefault();
+    void router.navigate({ to: "/welcome" });
   });
 
   useHotkey("Mod+O", async (e) => {
@@ -74,9 +93,11 @@ function Shell() {
   return (
     <MotionConfig reducedMotion={settings.reduceMotion ? "always" : "never"}>
     <div
-      className="flex h-screen w-screen flex-col overflow-hidden text-foreground backdrop-blur-xl"
+      className="flex h-screen w-screen flex-col overflow-hidden text-foreground"
       style={{
         backgroundColor: `color-mix(in oklab, var(--background) ${settings.windowOpacity * 100}%, transparent)`,
+        backdropFilter: `blur(${settings.windowBlur}px)`,
+        WebkitBackdropFilter: `blur(${settings.windowBlur}px)`,
       }}
     >
       <WindowTitleBar title={activeRepo ? `stash · ${activeRepo.name}` : "stash"} />
@@ -111,60 +132,56 @@ function Shell() {
             </span>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <Link
-              to="/settings"
-              title="Configurações (⌘,)"
-              className="flex size-7 items-center justify-center border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              activeProps={{ className: "bg-accent text-foreground" }}
-            >
-              <SettingsIcon className="size-3.5" />
-            </Link>
+            <StashiButton />
             <GitHubLoginButton />
           </div>
         </header>
 
-        {activeRepo ? (
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <nav className="flex items-center border-b border-border bg-card text-[11px]">
-              <TabLink to="/changes" shortcut="1">
-                MUDANÇAS
-                {totalChanges > 0 && (
-                  <span className="ml-2 border border-border px-1 text-[9px] tabular-nums text-muted-foreground">
-                    {totalChanges}
-                  </span>
-                )}
-              </TabLink>
-              <TabLink to="/history" shortcut="2">HISTÓRICO</TabLink>
-            </nav>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <nav className="flex items-center border-b border-border bg-card text-[11px]">
+            <TabLink to="/changes" shortcut="1" disabled={!activeRepo}>
+              MUDANÇAS
+              {totalChanges > 0 && (
+                <span className="ml-2 border border-border px-1 text-[9px] tabular-nums text-muted-foreground">
+                  {totalChanges}
+                </span>
+              )}
+            </TabLink>
+            <TabLink to="/history" shortcut="2" disabled={!activeRepo}>HISTÓRICO</TabLink>
+            <TabLink to="/pull-requests" shortcut="3" disabled={!activeRepo}>PULL REQUESTS</TabLink>
+            <TabLink to="/settings" shortcut=",">CONFIGURAÇÕES</TabLink>
+            <TabLink to="/welcome" shortcut="N">BOAS-VINDAS</TabLink>
+          </nav>
 
-            <div className="flex flex-1 overflow-hidden">
-              <Outlet />
-            </div>
+          <div className="flex flex-1 overflow-hidden">
+            {activeRepo ||
+            location.pathname === "/settings" ||
+            location.pathname === "/welcome" ? (
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={location.pathname}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                  className="flex flex-1 overflow-hidden"
+                >
+                  <Outlet />
+                </motion.div>
+              </AnimatePresence>
+            ) : (
+              <motion.div
+                key="welcome"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className="flex flex-1 overflow-hidden"
+              >
+                <WelcomeScreen />
+              </motion.div>
+            )}
           </div>
-        ) : location.pathname === "/settings" ? (
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.16, ease: "easeOut" }}
-              className="flex flex-1 overflow-hidden"
-            >
-              <Outlet />
-            </motion.div>
-          </AnimatePresence>
-        ) : (
-          <motion.div
-            key="welcome"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="flex flex-1 overflow-hidden"
-          >
-            <WelcomeScreen />
-          </motion.div>
-        )}
+        </div>
         </div>
       </div>
     </div>
@@ -176,11 +193,25 @@ function TabLink({
   to,
   children,
   shortcut,
+  disabled = false,
 }: {
-  to: "/changes" | "/history" | "/settings";
+  to: "/welcome" | "/changes" | "/history" | "/pull-requests" | "/settings";
   children: React.ReactNode;
   shortcut?: string;
+  disabled?: boolean;
 }) {
+  if (disabled) {
+    return (
+      <span
+        aria-disabled
+        className={cn(
+          "flex h-8 items-center gap-2 border-r border-border px-3 font-medium uppercase tracking-[0.1em] text-muted-foreground/40",
+        )}
+      >
+        <span className="flex items-center">{children}</span>
+      </span>
+    );
+  }
   return (
     <Link
       to={to}

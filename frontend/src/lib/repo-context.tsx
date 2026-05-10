@@ -12,6 +12,7 @@ import { config, CONFIG_KEYS } from "@/lib/config";
 import {
   extractErrorMessage,
   git,
+  type AheadBehind,
   type BranchInfo,
   type CommitDiffResult,
   type CommitInfo,
@@ -21,6 +22,7 @@ import {
   type RepoInfo,
   type StatusResult,
 } from "@/lib/git";
+import { useRepoOrgStore } from "@/lib/repo-org-store";
 
 const LEGACY_STORAGE_KEY = "stash:repos";
 
@@ -49,6 +51,7 @@ type RepoContextValue = {
   branches: BranchInfo[];
   branchesBusy: boolean;
   remote: RemoteInfo | null;
+  currentAheadBehind: AheadBehind | null;
 
   error: string | null;
 
@@ -62,6 +65,12 @@ type RepoContextValue = {
   checkoutBranch: (name: string) => Promise<void>;
   createBranch: (name: string, checkout: boolean) => Promise<void>;
   pushCurrent: () => Promise<void>;
+  stashChanges: (message?: string) => Promise<void>;
+  discardChanges: () => Promise<void>;
+  discardFile: (f: FileChange) => Promise<void>;
+  stageMany: (files: FileChange[]) => Promise<void>;
+  unstageMany: (files: FileChange[]) => Promise<void>;
+  discardMany: (files: FileChange[]) => Promise<void>;
 };
 
 const RepoContext = createContext<RepoContextValue | null>(null);
@@ -88,8 +97,13 @@ export function RepoProvider({ children }: { children: ReactNode }) {
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [branchesBusy, setBranchesBusy] = useState(false);
   const [remote, setRemote] = useState<RemoteInfo | null>(null);
+  const [currentAheadBehind, setCurrentAheadBehind] = useState<AheadBehind | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void useRepoOrgStore.getState().hydrate();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,6 +208,7 @@ export function RepoProvider({ children }: { children: ReactNode }) {
     if (!activePath) {
       setBranches([]);
       setRemote(null);
+      setCurrentAheadBehind(null);
       return;
     }
     setSelectedFile(null);
@@ -205,6 +220,30 @@ export function RepoProvider({ children }: { children: ReactNode }) {
     void refreshBranchesFor(activePath);
     void refreshRemote(activePath);
   }, [activePath, refreshStatus, refreshLog, refreshBranchesFor, refreshRemote]);
+
+  useEffect(() => {
+    if (!activePath) {
+      setCurrentAheadBehind(null);
+      return;
+    }
+    const current = branches.find((b) => b.isCurrent);
+    if (!current?.upstream) {
+      setCurrentAheadBehind(null);
+      return;
+    }
+    let cancelled = false;
+    git
+      .aheadBehind(activePath, current.upstream, current.name)
+      .then((ab) => {
+        if (!cancelled) setCurrentAheadBehind(ab);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentAheadBehind(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activePath, branches, commits]);
 
   useEffect(() => {
     if (!activePath || !selectedCommit) {
@@ -356,7 +395,73 @@ export function RepoProvider({ children }: { children: ReactNode }) {
     if (!activePath || !activeRepo) return;
     await git.push(activePath, activeRepo.currentBranch);
     await refreshBranchesFor(activePath);
+    setCurrentAheadBehind({ ahead: 0, behind: 0 });
   }, [activePath, activeRepo, refreshBranchesFor]);
+
+  const stashChanges = useCallback(
+    async (message = "") => {
+      if (!activePath) return;
+      await git.stashPush(activePath, message);
+      await Promise.all([refreshStatus(activePath), reloadActiveRepo(activePath)]);
+    },
+    [activePath, refreshStatus, reloadActiveRepo],
+  );
+
+  const discardChanges = useCallback(async () => {
+    if (!activePath) return;
+    await git.discardLocalChanges(activePath);
+    await Promise.all([refreshStatus(activePath), reloadActiveRepo(activePath)]);
+  }, [activePath, refreshStatus, reloadActiveRepo]);
+
+  const discardFile = useCallback(
+    async (f: FileChange) => {
+      if (!activePath) return;
+      const untracked = f.status === "untracked";
+      await git.discardFile(activePath, f.path, untracked);
+      await Promise.all([refreshStatus(activePath), reloadActiveRepo(activePath)]);
+      setSelectedFile((prev) =>
+        prev && prev.path === f.path && prev.staged === f.staged ? null : prev,
+      );
+    },
+    [activePath, refreshStatus, reloadActiveRepo],
+  );
+
+  const stageMany = useCallback(
+    async (files: FileChange[]) => {
+      if (!activePath || files.length === 0) return;
+      await git.stageFiles(activePath, files.map((f) => f.path));
+      await refreshStatus(activePath);
+    },
+    [activePath, refreshStatus],
+  );
+
+  const unstageMany = useCallback(
+    async (files: FileChange[]) => {
+      if (!activePath || files.length === 0) return;
+      await git.unstageFiles(activePath, files.map((f) => f.path));
+      await refreshStatus(activePath);
+    },
+    [activePath, refreshStatus],
+  );
+
+  const discardMany = useCallback(
+    async (files: FileChange[]) => {
+      if (!activePath || files.length === 0) return;
+      const tracked: string[] = [];
+      const untracked: string[] = [];
+      for (const f of files) {
+        if (f.status === "untracked") untracked.push(f.path);
+        else tracked.push(f.path);
+      }
+      await git.discardFiles(activePath, tracked, untracked);
+      await Promise.all([refreshStatus(activePath), reloadActiveRepo(activePath)]);
+      const removed = new Set(files.map((f) => `${f.staged ? "s" : "u"}:${f.path}`));
+      setSelectedFile((prev) =>
+        prev && removed.has(`${prev.staged ? "s" : "u"}:${prev.path}`) ? null : prev,
+      );
+    },
+    [activePath, refreshStatus, reloadActiveRepo],
+  );
 
   const value = useMemo<RepoContextValue>(
     () => ({
@@ -379,6 +484,7 @@ export function RepoProvider({ children }: { children: ReactNode }) {
       branches,
       branchesBusy,
       remote,
+      currentAheadBehind,
       error,
       setActivePath,
       addRepo,
@@ -390,6 +496,12 @@ export function RepoProvider({ children }: { children: ReactNode }) {
       checkoutBranch,
       createBranch,
       pushCurrent,
+      stashChanges,
+      discardChanges,
+      discardFile,
+      stageMany,
+      unstageMany,
+      discardMany,
     }),
     [
       repos,
@@ -409,6 +521,7 @@ export function RepoProvider({ children }: { children: ReactNode }) {
       branches,
       branchesBusy,
       remote,
+      currentAheadBehind,
       error,
       addRepo,
       removeRepo,
@@ -419,6 +532,12 @@ export function RepoProvider({ children }: { children: ReactNode }) {
       checkoutBranch,
       createBranch,
       pushCurrent,
+      stashChanges,
+      discardChanges,
+      discardFile,
+      stageMany,
+      unstageMany,
+      discardMany,
     ],
   );
 

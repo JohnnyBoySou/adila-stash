@@ -17,7 +17,7 @@
   font-display: swap;
 }
 
-@custom-variant dark (&:where([data-theme="ultra-dark"], [data-theme="ultra-dark"] *));
+@custom-variant dark (&:where([data-theme="ultra-dark"], [data-theme="ultra-dark"] *, [data-theme="ultra-deep"], [data-theme="ultra-deep"] *));
 
 /* Ultra Dark — pitch-black tech */
 :root,
@@ -48,6 +48,93 @@
   --modified: oklch(0.82 0.18 80);
   --deleted: oklch(0.7 0.24 22);
   --untracked: oklch(0.72 0.16 240);
+}
+
+/* Ultra Deep — super deep blue */
+[data-theme="ultra-deep"] {
+  --background: oklch(0.08 0.05 255);
+  --foreground: oklch(0.94 0.02 220);
+  --card: oklch(0.11 0.06 255);
+  --card-foreground: oklch(0.94 0.02 220);
+  --popover: oklch(0.13 0.07 255);
+  --popover-foreground: oklch(0.94 0.02 220);
+  --primary: oklch(0.94 0.02 220);
+  --primary-foreground: oklch(0.08 0.05 255);
+  --secondary: oklch(0.16 0.07 255);
+  --secondary-foreground: oklch(0.94 0.02 220);
+  --muted: oklch(0.14 0.06 255);
+  --muted-foreground: oklch(0.62 0.05 230);
+  --accent: oklch(0.18 0.08 250);
+  --accent-foreground: oklch(0.96 0.02 220);
+  --destructive: oklch(0.68 0.24 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.78 0.08 220 / 14%);
+  --input: oklch(0.78 0.08 220 / 16%);
+  --ring: oklch(0.78 0.12 230 / 32%);
+  --radius: 0;
+
+  --added: oklch(0.78 0.2 145);
+  --modified: oklch(0.85 0.18 80);
+  --deleted: oklch(0.72 0.24 22);
+  --untracked: oklch(0.78 0.18 230);
+}
+
+/* Ultra Aqua — bright cyan-blue */
+[data-theme="ultra-aqua"] {
+  --background: oklch(0.97 0.03 215);
+  --foreground: oklch(0.18 0.08 250);
+  --card: oklch(0.95 0.04 215);
+  --card-foreground: oklch(0.18 0.08 250);
+  --popover: oklch(0.97 0.03 215);
+  --popover-foreground: oklch(0.18 0.08 250);
+  --primary: oklch(0.18 0.08 250);
+  --primary-foreground: oklch(0.97 0.03 215);
+  --secondary: oklch(0.91 0.05 215);
+  --secondary-foreground: oklch(0.18 0.08 250);
+  --muted: oklch(0.93 0.04 215);
+  --muted-foreground: oklch(0.42 0.07 240);
+  --accent: oklch(0.88 0.06 215);
+  --accent-foreground: oklch(0.18 0.08 250);
+  --destructive: oklch(0.5 0.22 25);
+  --destructive-foreground: oklch(0.97 0.03 215);
+  --border: oklch(0.18 0.08 250 / 14%);
+  --input: oklch(0.18 0.08 250 / 16%);
+  --ring: oklch(0.18 0.08 250 / 32%);
+  --radius: 0;
+
+  --added: oklch(0.5 0.2 145);
+  --modified: oklch(0.6 0.18 75);
+  --deleted: oklch(0.5 0.24 25);
+  --untracked: oklch(0.5 0.18 240);
+}
+
+/* Off-White — warm paper */
+[data-theme="off-white"] {
+  --background: oklch(0.97 0.01 85);
+  --foreground: oklch(0.18 0.01 60);
+  --card: oklch(0.95 0.012 85);
+  --card-foreground: oklch(0.18 0.01 60);
+  --popover: oklch(0.97 0.01 85);
+  --popover-foreground: oklch(0.18 0.01 60);
+  --primary: oklch(0.18 0.01 60);
+  --primary-foreground: oklch(0.97 0.01 85);
+  --secondary: oklch(0.92 0.013 80);
+  --secondary-foreground: oklch(0.18 0.01 60);
+  --muted: oklch(0.94 0.012 80);
+  --muted-foreground: oklch(0.45 0.01 60);
+  --accent: oklch(0.9 0.015 80);
+  --accent-foreground: oklch(0.18 0.01 60);
+  --destructive: oklch(0.5 0.22 25);
+  --destructive-foreground: oklch(0.97 0.01 85);
+  --border: oklch(0.18 0.01 60 / 14%);
+  --input: oklch(0.18 0.01 60 / 16%);
+  --ring: oklch(0.18 0.01 60 / 32%);
+  --radius: 0;
+
+  --added: oklch(0.5 0.18 145);
+  --modified: oklch(0.6 0.16 70);
+  --deleted: oklch(0.48 0.22 25);
+  --untracked: oklch(0.48 0.14 240);
 }
 
 /* Ultra White — bright tech */
@@ -135,9 +222,22 @@
     user-select: none;
   }
 
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  [role="tab"]:not(:disabled),
+  a[href] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
   code,
   pre,
-  .font-mono {
+  .font-mono,
+  .uppercase {
     font-family: var(--font-mono);
     font-variation-settings: "MONO" 1;
   }
@@ -156,4 +256,118 @@
   ::-webkit-scrollbar-thumb:hover {
     background: var(--ring);
   }
+
+  [data-diff-style="collapsed"] tr.diff-line[data-state="plain"] {
+    display: none;
+  }
+
+  [data-diff-style="inline"] .diff-line-content-operator {
+    visibility: hidden;
+    width: 0.4em !important;
+    margin-left: -0.4em !important;
+  }
+  [data-diff-style="inline"] .diff-line-content-item {
+    padding-left: 0.6em !important;
+    border-left: 2px solid transparent;
+  }
+  [data-diff-style="inline"] .diff-line-content-item:has([data-operator="+"]) {
+    border-left-color: var(--added);
+  }
+  [data-diff-style="inline"] .diff-line-content-item:has([data-operator="-"]) {
+    border-left-color: var(--deleted);
+  }
+
+  /* Radix ScrollArea envolve filhos em um div com display:table que cresce
+     com o conteúdo, quebrando truncate. Força block para que o filho respeite
+     a largura do viewport e `truncate` funcione. */
+  [data-radix-scroll-area-viewport] > div {
+    display: block !important;
+  }
+
 }
+
+/* Markdown — fora de @layer para vencer o reset do Tailwind preflight (que zera
+   list-style, font-weight de headings, margens, etc.) */
+.md > :first-child { margin-top: 0 !important; }
+.md > :last-child { margin-bottom: 0 !important; }
+
+.md p { margin: 0.4rem 0 !important; line-height: 1.55; }
+
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+  margin: 0.8rem 0 0.3rem !important;
+  font-weight: 600 !important;
+  line-height: 1.25;
+}
+.md h1 { font-size: 1.15rem !important; }
+.md h2 { font-size: 1.08rem !important; }
+.md h3 { font-size: 1rem !important; }
+.md h4 { font-size: 0.95rem !important; }
+.md h5, .md h6 { font-size: 0.9rem !important; color: var(--muted-foreground); }
+
+.md ul, .md ol { margin: 0.4rem 0 !important; padding-left: 1.4rem !important; }
+.md ul { list-style: disc !important; }
+.md ol { list-style: decimal !important; }
+.md ul ul, .md ol ol, .md ul ol, .md ol ul { margin: 0.2rem 0 !important; }
+.md li { margin: 0.15rem 0; line-height: 1.55; display: list-item !important; }
+.md li > p { margin: 0.15rem 0 !important; }
+.md li::marker { color: var(--muted-foreground); }
+
+.md blockquote {
+  margin: 0.5rem 0 !important;
+  padding-left: 0.75rem !important;
+  border-left: 2px solid var(--border) !important;
+  color: var(--muted-foreground);
+}
+
+.md hr {
+  margin: 0.75rem 0 !important;
+  border: 0 !important;
+  border-top: 1px solid var(--border) !important;
+}
+
+.md strong { font-weight: 600 !important; }
+.md em { font-style: italic !important; }
+.md del { text-decoration: line-through; opacity: 0.7; }
+
+.md table {
+  margin: 0.5rem 0;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  font-size: 0.95em;
+}
+.md th, .md td {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.md thead { background: color-mix(in srgb, var(--muted) 60%, transparent); }
+
+.md :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  white-space: break-spaces;
+}
+
+.md pre {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.md pre code {
+  background: none !important;
+  border: 0 !important;
+  padding: 0 !important;
+  font-size: inherit;
+  white-space: pre;
+}
+
+.md img { max-width: 100%; height: auto; }

@@ -27,7 +27,7 @@ export function HistoryPanel({ commits, selected, onSelect, loading }: Props) {
   });
 
   return (
-    <div className="flex h-full w-80 shrink-0 flex-col border-r border-border bg-background">
+    <div className="flex h-full w-full flex-col border-r border-border">
       <div className="flex h-10 items-center gap-2 border-b border-border px-3 text-[11px] font-medium uppercase tracking-[0.1em]">
         Histórico
         {loading && <Loader2 className="size-3 animate-spin text-muted-foreground" />}

@@ -24,6 +24,7 @@ import { CloneRepoDialog } from "@/components/CloneRepoDialog";
 import { MenuItem, MenuLabel, MenuSeparator, PopoverMenu } from "@/components/PopoverMenu";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useRepo } from "@/lib/repo-context";
 import { useRepoOrgStore, type Collection } from "@/lib/repo-org-store";
 import { cn } from "@/lib/utils";
 import { extractErrorMessage, git, type RepoInfo } from "@/lib/git";
@@ -54,14 +55,16 @@ function getInitials(name: string): string {
 }
 
 export function RepoSidebar({ repos, active, onSelect, onAdd, onRemove }: Props) {
-  const [pathInput, setPathInput] = useState("");
-  const [adding, setAdding] = useState(false);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [newCollectionOpen, setNewCollectionOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [addToCollectionId, setAddToCollectionId] = useState<string | null>(null);
+  const [pendingCollectionId, setPendingCollectionId] = useState<string | null>(null);
 
+  const { hydrated } = useRepo();
+  const orgHydrated = useRepoOrgStore((s) => s.hydrated);
   const collections = useRepoOrgStore((s) => s.collections);
   const pinned = useRepoOrgStore((s) => s.pinned);
   const assignments = useRepoOrgStore((s) => s.assignments);
@@ -78,8 +81,9 @@ export function RepoSidebar({ repos, active, onSelect, onAdd, onRemove }: Props)
   const toggleSidebar = useRepoOrgStore((s) => s.toggleSidebar);
 
   useEffect(() => {
+    if (!hydrated || !orgHydrated) return;
     cleanupForPaths(repos.map((r) => r.path));
-  }, [repos, cleanupForPaths]);
+  }, [repos, hydrated, orgHydrated, cleanupForPaths]);
 
   const groups = useMemo<Group[]>(() => {
     const sortedCollections = [...collections].sort((a, b) => a.order - b.order);
@@ -113,20 +117,6 @@ export function RepoSidebar({ repos, active, onSelect, onAdd, onRemove }: Props)
     return out;
   }, [collections, assignments, pinned, repos, uncategorizedCollapsed]);
 
-  async function handleAdd() {
-    const trimmed = pathInput.trim();
-    if (!trimmed) return;
-    setError(null);
-    setAdding(true);
-    try {
-      await onAdd(trimmed);
-      setPathInput("");
-    } catch (e) {
-      setError(extractErrorMessage(e));
-    } finally {
-      setAdding(false);
-    }
-  }
 
   async function handlePick() {
     if (picking) return;
@@ -136,6 +126,23 @@ export function RepoSidebar({ repos, active, onSelect, onAdd, onRemove }: Props)
       const path = await git.pickRepoFolder();
       if (!path) return;
       await onAdd(path);
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setPicking(false);
+    }
+  }
+
+  async function handlePickForCollection(collectionId: string) {
+    if (picking) return;
+    setError(null);
+    setPicking(true);
+    try {
+      const path = await git.pickRepoFolder();
+      if (!path) return;
+      await onAdd(path);
+      assignToCollection(path, collectionId);
+      setAddToCollectionId(null);
     } catch (e) {
       setError(extractErrorMessage(e));
     } finally {
@@ -221,25 +228,6 @@ export function RepoSidebar({ repos, active, onSelect, onAdd, onRemove }: Props)
       </div>
 
       <div className="space-y-2 border-b border-border p-2">
-        <div className="flex items-stretch">
-          <Input
-            value={pathInput}
-            onChange={(e) => setPathInput(e.target.value)}
-            placeholder="/caminho/do/repo"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleAdd();
-            }}
-            className="h-7 border-r-0 text-[11px]"
-          />
-          <button
-            type="button"
-            disabled={adding || !pathInput.trim()}
-            onClick={() => void handleAdd()}
-            className="flex size-7 shrink-0 items-center justify-center border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-          >
-            <Plus className="size-3.5" />
-          </button>
-        </div>
         <div className="grid grid-cols-2 gap-1.5">
           <button
             type="button"
@@ -286,11 +274,37 @@ export function RepoSidebar({ repos, active, onSelect, onAdd, onRemove }: Props)
         </AnimatePresence>
       </div>
 
+      <AddRepoToCollectionDialog
+        open={addToCollectionId !== null}
+        collectionName={
+          addToCollectionId
+            ? collections.find((c) => c.id === addToCollectionId)?.name ?? ""
+            : ""
+        }
+        picking={picking}
+        onClose={() => setAddToCollectionId(null)}
+        onPick={() => {
+          if (addToCollectionId) void handlePickForCollection(addToCollectionId);
+        }}
+        onClone={() => {
+          setPendingCollectionId(addToCollectionId);
+          setAddToCollectionId(null);
+          setCloneOpen(true);
+        }}
+      />
+
       <CloneRepoDialog
         open={cloneOpen}
-        onClose={() => setCloneOpen(false)}
+        onClose={() => {
+          setCloneOpen(false);
+          setPendingCollectionId(null);
+        }}
         onCloned={async (path) => {
           await onAdd(path);
+          if (pendingCollectionId) {
+            assignToCollection(path, pendingCollectionId);
+            setPendingCollectionId(null);
+          }
         }}
       />
 
@@ -326,6 +340,7 @@ export function RepoSidebar({ repos, active, onSelect, onAdd, onRemove }: Props)
                   assignToCollection(path, id);
                   setRenamingId(id);
                 }}
+                onAddToCollection={(id) => setAddToCollectionId(id)}
               />
             ))}
           </div>
@@ -372,6 +387,7 @@ function CollectionSection({
   onDeleteCollection,
   onReorderCollection,
   onCreateCollectionForRepo,
+  onAddToCollection,
 }: {
   group: Group;
   active: string | null;
@@ -387,6 +403,7 @@ function CollectionSection({
   onFinishRename: (id: string, name: string) => void;
   onDeleteCollection: (id: string) => void;
   onReorderCollection: (id: string, dir: "up" | "down") => void;
+  onAddToCollection: (id: string) => void;
   onCreateCollectionForRepo: (path: string) => void;
 }) {
   const isRenaming = group.id !== null && renamingId === group.id;
@@ -491,8 +508,21 @@ function CollectionSection({
             className="overflow-hidden"
           >
             {group.repos.length === 0 && (
-              <li className="px-3 py-2 text-[10px] italic text-muted-foreground">
-                Vazio
+              <li>
+                {group.id ? (
+                  <button
+                    type="button"
+                    onClick={() => onAddToCollection(group.id!)}
+                    className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-[10px] italic text-muted-foreground transition-colors hover:bg-accent hover:not-italic hover:text-foreground"
+                  >
+                    <Plus className="size-3" />
+                    Adicionar repositório…
+                  </button>
+                ) : (
+                  <span className="block px-3 py-2 text-[10px] italic text-muted-foreground">
+                    Vazio
+                  </span>
+                )}
               </li>
             )}
             {group.repos.map((r) => (
@@ -702,5 +732,72 @@ function RenameInput({
       onBlur={() => onSubmit(value)}
       className="h-6 text-[11px]"
     />
+  );
+}
+
+function AddRepoToCollectionDialog({
+  open,
+  collectionName,
+  picking,
+  onClose,
+  onPick,
+  onClone,
+}: {
+  open: boolean;
+  collectionName: string;
+  picking: boolean;
+  onClose: () => void;
+  onPick: () => void;
+  onClone: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="flex w-[380px] flex-col border border-border bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-[12px] font-semibold">Adicionar repositório</h2>
+            {collectionName && (
+              <span className="font-mono text-[10px] text-muted-foreground">
+                em {collectionName}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex size-5 items-center justify-center text-muted-foreground hover:text-foreground"
+            aria-label="Fechar"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 p-4">
+          <button
+            type="button"
+            onClick={onPick}
+            disabled={picking}
+            className="flex flex-col items-center justify-center gap-2 border border-border px-3 py-6 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+          >
+            <FolderSearch className="size-5" />
+            Selecionar pasta
+          </button>
+          <button
+            type="button"
+            onClick={onClone}
+            className="flex flex-col items-center justify-center gap-2 border border-border px-3 py-6 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Cloud className="size-5" />
+            Clonar do GitHub
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

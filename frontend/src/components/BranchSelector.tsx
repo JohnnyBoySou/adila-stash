@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { CreatePullRequestDialog } from "@/components/CreatePullRequestDialog";
+import { DirtyTreeDialog, isDirtyTreeError } from "@/components/DirtyTreeDialog";
 import { MenuItem, MenuLabel, MenuSeparator, PopoverMenu } from "@/components/PopoverMenu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,15 +20,22 @@ import { extractErrorMessage } from "@/lib/git";
 import { useRepo } from "@/lib/repo-context";
 import { cn } from "@/lib/utils";
 
+type PendingOp =
+  | { kind: "checkout"; branch: string }
+  | { kind: "create"; branch: string };
+
 export function BranchSelector() {
   const {
     activeRepo,
     branches,
     branchesBusy,
     remote,
+    currentAheadBehind,
     checkoutBranch,
     createBranch,
     pushCurrent,
+    stashChanges,
+    discardChanges,
   } = useRepo();
 
   const [query, setQuery] = useState("");
@@ -37,6 +45,7 @@ export function BranchSelector() {
   const [pushing, setPushing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [prOpen, setPrOpen] = useState(false);
+  const [dirtyOp, setDirtyOp] = useState<PendingOp | null>(null);
 
   const currentBranchName = activeRepo?.currentBranch ?? "";
   const currentBranch = useMemo(
@@ -53,6 +62,7 @@ export function BranchSelector() {
   if (!activeRepo) return null;
 
   const hasUpstream = Boolean(currentBranch?.upstream);
+  const isDefaultBranch = currentBranchName === "main" || currentBranchName === "master";
 
   function resetMenu() {
     setQuery("");
@@ -75,7 +85,12 @@ export function BranchSelector() {
       resetMenu();
       close();
     } catch (e) {
-      setActionError(extractErrorMessage(e));
+      if (isDirtyTreeError(e)) {
+        setDirtyOp({ kind: "checkout", branch: name });
+        close();
+      } else {
+        setActionError(extractErrorMessage(e));
+      }
     } finally {
       setPending(false);
     }
@@ -92,10 +107,36 @@ export function BranchSelector() {
       resetMenu();
       close();
     } catch (e) {
-      setActionError(extractErrorMessage(e));
+      if (isDirtyTreeError(e)) {
+        setDirtyOp({ kind: "create", branch: name });
+        close();
+      } else {
+        setActionError(extractErrorMessage(e));
+      }
     } finally {
       setPending(false);
     }
+  }
+
+  async function retryPending(op: PendingOp) {
+    if (op.kind === "checkout") {
+      await checkoutBranch(op.branch);
+    } else {
+      await createBranch(op.branch, true);
+    }
+    resetMenu();
+  }
+
+  async function handleStashAndContinue() {
+    if (!dirtyOp) return;
+    await stashChanges(`stash auto antes de ${dirtyOp.kind === "checkout" ? "trocar" : "criar"} ${dirtyOp.branch}`);
+    await retryPending(dirtyOp);
+  }
+
+  async function handleDiscardAndContinue() {
+    if (!dirtyOp) return;
+    await discardChanges();
+    await retryPending(dirtyOp);
   }
 
   async function handlePush() {
@@ -159,19 +200,39 @@ export function BranchSelector() {
       </PopoverMenu>
 
       {hasUpstream ? (
-        remote?.isGitHub ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7 gap-1.5 px-2 text-[11px]"
-            onClick={() => setPrOpen(true)}
-            title="Criar pull request"
-          >
-            <GitPullRequest className="size-3" />
-            Criar PR
-          </Button>
-        ) : null
+        <>
+          {currentAheadBehind && currentAheadBehind.ahead > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1.5 px-2 text-[11px]"
+              onClick={() => void handlePush()}
+              disabled={pushing}
+              title={`Enviar ${currentAheadBehind.ahead} commit(s) para ${currentBranch?.upstream ?? "origin"}`}
+            >
+              {pushing ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <CloudUpload className="size-3" />
+              )}
+              {pushing ? "Enviando…" : `Push ${currentAheadBehind.ahead}`}
+            </Button>
+          )}
+          {remote?.isGitHub && !isDefaultBranch && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1.5 px-2 text-[11px]"
+              onClick={() => setPrOpen(true)}
+              title="Criar pull request"
+            >
+              <GitPullRequest className="size-3" />
+              Criar PR
+            </Button>
+          )}
+        </>
       ) : (
         <Button
           type="button"
@@ -198,6 +259,22 @@ export function BranchSelector() {
       )}
 
       <CreatePullRequestDialog open={prOpen} onClose={() => setPrOpen(false)} />
+
+      <DirtyTreeDialog
+        open={!!dirtyOp}
+        onOpenChange={(open) => {
+          if (!open) setDirtyOp(null);
+        }}
+        intent={
+          dirtyOp?.kind === "create"
+            ? `criar e trocar para \`${dirtyOp.branch}\``
+            : dirtyOp
+              ? `trocar para \`${dirtyOp.branch}\``
+              : ""
+        }
+        onStash={handleStashAndContinue}
+        onDiscard={handleDiscardAndContinue}
+      />
     </>
   );
 }

@@ -11,9 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
+import { Route as LayoutWelcomeRouteImport } from './routes/_layout/welcome'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
+import { Route as LayoutPullRequestsRouteImport } from './routes/_layout/pull-requests'
 import { Route as LayoutHistoryRouteImport } from './routes/_layout/history'
 import { Route as LayoutChangesRouteImport } from './routes/_layout/changes'
+import { Route as LayoutPullRequestsNumberRouteImport } from './routes/_layout/pull-requests_.$number'
 
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
@@ -24,9 +27,19 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
   path: '/',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutWelcomeRoute = LayoutWelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutPullRequestsRoute = LayoutPullRequestsRouteImport.update({
+  id: '/pull-requests',
+  path: '/pull-requests',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutHistoryRoute = LayoutHistoryRouteImport.update({
@@ -39,39 +52,71 @@ const LayoutChangesRoute = LayoutChangesRouteImport.update({
   path: '/changes',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutPullRequestsNumberRoute =
+  LayoutPullRequestsNumberRouteImport.update({
+    id: '/pull-requests_/$number',
+    path: '/pull-requests/$number',
+    getParentRoute: () => LayoutRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
   '/changes': typeof LayoutChangesRoute
   '/history': typeof LayoutHistoryRoute
+  '/pull-requests': typeof LayoutPullRequestsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/welcome': typeof LayoutWelcomeRoute
+  '/pull-requests/$number': typeof LayoutPullRequestsNumberRoute
 }
 export interface FileRoutesByTo {
   '/changes': typeof LayoutChangesRoute
   '/history': typeof LayoutHistoryRoute
+  '/pull-requests': typeof LayoutPullRequestsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/welcome': typeof LayoutWelcomeRoute
   '/': typeof LayoutIndexRoute
+  '/pull-requests/$number': typeof LayoutPullRequestsNumberRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
   '/_layout/changes': typeof LayoutChangesRoute
   '/_layout/history': typeof LayoutHistoryRoute
+  '/_layout/pull-requests': typeof LayoutPullRequestsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/_layout/welcome': typeof LayoutWelcomeRoute
   '/_layout/': typeof LayoutIndexRoute
+  '/_layout/pull-requests_/$number': typeof LayoutPullRequestsNumberRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/changes' | '/history' | '/settings'
+  fullPaths:
+    | '/'
+    | '/changes'
+    | '/history'
+    | '/pull-requests'
+    | '/settings'
+    | '/welcome'
+    | '/pull-requests/$number'
   fileRoutesByTo: FileRoutesByTo
-  to: '/changes' | '/history' | '/settings' | '/'
+  to:
+    | '/changes'
+    | '/history'
+    | '/pull-requests'
+    | '/settings'
+    | '/welcome'
+    | '/'
+    | '/pull-requests/$number'
   id:
     | '__root__'
     | '/_layout'
     | '/_layout/changes'
     | '/_layout/history'
+    | '/_layout/pull-requests'
     | '/_layout/settings'
+    | '/_layout/welcome'
     | '/_layout/'
+    | '/_layout/pull-requests_/$number'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -94,11 +139,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/welcome': {
+      id: '/_layout/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof LayoutWelcomeRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/settings': {
       id: '/_layout/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof LayoutSettingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/pull-requests': {
+      id: '/_layout/pull-requests'
+      path: '/pull-requests'
+      fullPath: '/pull-requests'
+      preLoaderRoute: typeof LayoutPullRequestsRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/history': {
@@ -115,21 +174,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutChangesRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/pull-requests_/$number': {
+      id: '/_layout/pull-requests_/$number'
+      path: '/pull-requests/$number'
+      fullPath: '/pull-requests/$number'
+      preLoaderRoute: typeof LayoutPullRequestsNumberRouteImport
+      parentRoute: typeof LayoutRoute
+    }
   }
 }
 
 interface LayoutRouteChildren {
   LayoutChangesRoute: typeof LayoutChangesRoute
   LayoutHistoryRoute: typeof LayoutHistoryRoute
+  LayoutPullRequestsRoute: typeof LayoutPullRequestsRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
+  LayoutWelcomeRoute: typeof LayoutWelcomeRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
+  LayoutPullRequestsNumberRoute: typeof LayoutPullRequestsNumberRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutChangesRoute: LayoutChangesRoute,
   LayoutHistoryRoute: LayoutHistoryRoute,
+  LayoutPullRequestsRoute: LayoutPullRequestsRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
+  LayoutWelcomeRoute: LayoutWelcomeRoute,
   LayoutIndexRoute: LayoutIndexRoute,
+  LayoutPullRequestsNumberRoute: LayoutPullRequestsNumberRoute,
 }
 
 const LayoutRouteWithChildren =

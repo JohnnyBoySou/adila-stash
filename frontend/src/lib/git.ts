@@ -55,6 +55,8 @@ export interface DiffResult {
   newText: string;
   status: string;
   isBinary: boolean;
+  oldImage?: string;
+  newImage?: string;
 }
 
 export interface CommitFileDiff {
@@ -64,6 +66,8 @@ export interface CommitFileDiff {
   newText: string;
   status: string;
   isBinary: boolean;
+  oldImage?: string;
+  newImage?: string;
 }
 
 export interface CommitDiffResult {
@@ -88,6 +92,11 @@ export interface RemoteInfo {
   isGitHub: boolean;
 }
 
+export interface AheadBehind {
+  ahead: number;
+  behind: number;
+}
+
 const SERVICE = "main.GitService";
 
 function call<T>(method: string, ...args: unknown[]): Promise<T> {
@@ -100,6 +109,11 @@ export const git = {
   status: (path: string) => call<StatusResult>("Status", path),
   stage: (repoPath: string, file: string) => call<void>("StageFile", repoPath, file),
   unstage: (repoPath: string, file: string) => call<void>("UnstageFile", repoPath, file),
+  stageFiles: (repoPath: string, files: string[]) => call<void>("StageFiles", repoPath, files),
+  unstageFiles: (repoPath: string, files: string[]) =>
+    call<void>("UnstageFiles", repoPath, files),
+  discardFiles: (repoPath: string, tracked: string[], untracked: string[]) =>
+    call<void>("DiscardFiles", repoPath, tracked, untracked),
   commit: (repoPath: string, message: string, name = "", email = "") =>
     call<string>("Commit", repoPath, message, name, email),
   log: (repoPath: string, limit = 100) => call<CommitInfo[]>("Log", repoPath, limit),
@@ -114,5 +128,12 @@ export const git = {
   createBranch: (repoPath: string, name: string, checkout: boolean) =>
     call<void>("CreateBranch", repoPath, name, checkout),
   push: (repoPath: string, branch: string) => call<void>("Push", repoPath, branch),
+  stashPush: (repoPath: string, message = "") => call<void>("StashPush", repoPath, message),
+  stashPop: (repoPath: string) => call<void>("StashPop", repoPath),
+  discardLocalChanges: (repoPath: string) => call<void>("DiscardLocalChanges", repoPath),
+  discardFile: (repoPath: string, file: string, untracked: boolean) =>
+    call<void>("DiscardFile", repoPath, file, untracked),
   remoteInfo: (repoPath: string) => call<RemoteInfo>("RemoteInfo", repoPath),
+  aheadBehind: (repoPath: string, base: string, head: string) =>
+    call<AheadBehind>("AheadBehind", repoPath, base, head),
 };

@@ -5,18 +5,17 @@ import { Check, RotateCcw } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { AsciiGlitch } from "@/components/AsciiGlitch";
+import { Logo } from "@/components/Logo";
 import {
   MONO_FONT_LABELS,
-  SANS_FONT_LABELS,
   useSettings,
   type AccentTint,
   type DiffStyle,
   type FontSize,
   type MonoFont,
   type Radius,
-  type SansFont,
   type TabWidth,
-  type UiFontSize,
+  type WindowBlur,
   type WindowOpacity,
 } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
@@ -38,7 +37,7 @@ function SettingsView() {
   const [section, setSection] = useState<Section>("appearance");
 
   return (
-    <div className="flex flex-1 overflow-hidden bg-background">
+    <div className="font-mono flex flex-1 overflow-hidden">
       <aside className="flex h-full w-56 shrink-0 flex-col border-r border-border bg-card">
         <div className="flex h-10 items-center border-b border-border px-3 text-[11px] font-medium uppercase tracking-[0.1em]">
           Configurações
@@ -98,7 +97,7 @@ function SettingsView() {
                 />
 
                 <Field label="Tema">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <ThemeCard
                       active={settings.theme === "ultra-dark"}
                       onClick={() => update("theme", "ultra-dark")}
@@ -110,6 +109,16 @@ function SettingsView() {
                       muted="oklch(0.6 0 0)"
                     />
                     <ThemeCard
+                      active={settings.theme === "ultra-deep"}
+                      onClick={() => update("theme", "ultra-deep")}
+                      label="Ultra Deep"
+                      bg="oklch(0.08 0.05 255)"
+                      surface="oklch(0.11 0.06 255)"
+                      border="oklch(0.78 0.08 220 / 14%)"
+                      fg="oklch(0.94 0.02 220)"
+                      muted="oklch(0.62 0.05 230)"
+                    />
+                    <ThemeCard
                       active={settings.theme === "ultra-white"}
                       onClick={() => update("theme", "ultra-white")}
                       label="Ultra White"
@@ -119,10 +128,30 @@ function SettingsView() {
                       fg="oklch(0.04 0 0)"
                       muted="oklch(0.45 0 0)"
                     />
+                    <ThemeCard
+                      active={settings.theme === "ultra-aqua"}
+                      onClick={() => update("theme", "ultra-aqua")}
+                      label="Ultra Aqua"
+                      bg="oklch(0.97 0.03 215)"
+                      surface="oklch(0.95 0.04 215)"
+                      border="oklch(0.18 0.08 250 / 14%)"
+                      fg="oklch(0.18 0.08 250)"
+                      muted="oklch(0.42 0.07 240)"
+                    />
+                    <ThemeCard
+                      active={settings.theme === "off-white"}
+                      onClick={() => update("theme", "off-white")}
+                      label="Off-White"
+                      bg="oklch(0.97 0.01 85)"
+                      surface="oklch(0.95 0.012 85)"
+                      border="oklch(0.18 0.01 60 / 14%)"
+                      fg="oklch(0.18 0.01 60)"
+                      muted="oklch(0.45 0.01 60)"
+                    />
                   </div>
                 </Field>
 
-                <Field label="Fonte mono (código)">
+                <Field label="Fonte">
                   <FontGrid<MonoFont>
                     value={settings.monoFont}
                     onChange={(v) => update("monoFont", v)}
@@ -131,31 +160,6 @@ function SettingsView() {
                       label: MONO_FONT_LABELS[k],
                       preview: MONO_PREVIEW[k],
                     }))}
-                  />
-                </Field>
-
-                <Field label="Fonte sans (UI)">
-                  <FontGrid<SansFont>
-                    value={settings.sansFont}
-                    onChange={(v) => update("sansFont", v)}
-                    options={(Object.keys(SANS_FONT_LABELS) as SansFont[]).map((k) => ({
-                      value: k,
-                      label: SANS_FONT_LABELS[k],
-                      preview: SANS_PREVIEW[k],
-                    }))}
-                  />
-                </Field>
-
-                <Field label="Tamanho da fonte (UI)">
-                  <OptionGrid<UiFontSize>
-                    value={settings.uiFontSize}
-                    onChange={(v) => update("uiFontSize", v)}
-                    options={[
-                      { value: 12, label: "12" },
-                      { value: 13, label: "13" },
-                      { value: 14, label: "14" },
-                    ]}
-                    cols={3}
                   />
                 </Field>
 
@@ -178,10 +182,33 @@ function SettingsView() {
                     value={settings.windowOpacity}
                     onChange={(v) => update("windowOpacity", v)}
                     options={[
+                      { value: 0.5, label: "50%" },
+                      { value: 0.6, label: "60%" },
+                      { value: 0.7, label: "70%" },
+                      { value: 0.75, label: "75%" },
+                      { value: 0.8, label: "80%" },
                       { value: 0.85, label: "85%" },
                       { value: 0.9, label: "90%" },
                       { value: 0.95, label: "95%" },
                       { value: 1, label: "100%" },
+                    ]}
+                    cols={3}
+                  />
+                </Field>
+
+                <Field label="Desfoque do fundo">
+                  <OptionGrid<WindowBlur>
+                    value={settings.windowBlur}
+                    onChange={(v) => update("windowBlur", v)}
+                    options={[
+                      { value: 0, label: "Nenhum" },
+                      { value: 4, label: "4px" },
+                      { value: 8, label: "8px" },
+                      { value: 12, label: "12px" },
+                      { value: 16, label: "16px" },
+                      { value: 24, label: "24px" },
+                      { value: 32, label: "32px" },
+                      { value: 48, label: "48px" },
                     ]}
                     cols={4}
                   />
@@ -245,6 +272,8 @@ function SettingsView() {
                     options={[
                       { value: "unified", label: "Unificado" },
                       { value: "split", label: "Lado a lado" },
+                      { value: "inline", label: "Inline" },
+                      { value: "collapsed", label: "Compacto" },
                     ]}
                     cols={2}
                   />
@@ -317,6 +346,7 @@ function SettingsView() {
                 <SectionHeader title="Sobre" description="O que é o stash." />
 
                 <div className="mb-6 flex flex-col items-center gap-4 border border-border bg-card p-6">
+                  <Logo className="h-20 w-auto" />
                   <AsciiGlitch />
                   <div className="text-center">
                     <p className="text-[12px] text-foreground">
@@ -377,28 +407,6 @@ function SettingsView() {
               </div>
             </div>
           </motion.aside>
-        ) : section === "appearance" ? (
-          <motion.aside
-            key="appearance-preview"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 12 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="hidden h-full w-[420px] shrink-0 flex-col border-l border-border bg-background/40 lg:flex"
-          >
-            <div className="flex h-10 shrink-0 items-center border-b border-border px-4 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              Pré-visualização
-            </div>
-            <div className="flex flex-1 items-center justify-center overflow-y-auto px-8 py-10">
-              <div className="w-full max-w-[300px]">
-                <AppearancePreview
-                  radius={settings.radius}
-                  uiFontSize={settings.uiFontSize}
-                  monoFont={settings.monoFont}
-                />
-              </div>
-            </div>
-          </motion.aside>
         ) : null}
       </AnimatePresence>
     </div>
@@ -411,13 +419,6 @@ const MONO_PREVIEW: Record<MonoFont, string> = {
   fira: '"Fira Code", ui-monospace, monospace',
   ibm: '"IBM Plex Mono", ui-monospace, monospace',
   system: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-};
-
-const SANS_PREVIEW: Record<SansFont, string> = {
-  google: '"Google Sans Code", ui-sans-serif, system-ui, sans-serif',
-  inter: '"Inter", ui-sans-serif, system-ui, sans-serif',
-  geist: '"Geist", ui-sans-serif, system-ui, sans-serif',
-  system: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
 };
 
 function SectionHeader({ title, description }: { title: string; description: string }) {
@@ -710,82 +711,21 @@ function DiffPreview({
     );
   }
 
+  const variant: "inline" | "collapsed" | "default" =
+    style === "inline" ? "inline" : style === "collapsed" ? "collapsed" : "default";
+
   return (
     <div
       className="overflow-hidden border border-border font-mono"
       style={previewStyle}
     >
-      <DiffLine ln={1} text={SAMPLE_OLD[0]} kind="del" showLineNumbers={showLineNumbers} />
-      <DiffLine ln={1} text={SAMPLE_NEW[0]} kind="add" showLineNumbers={showLineNumbers} />
-      <DiffLine ln={2} text={SAMPLE_OLD[1]} kind="del" showLineNumbers={showLineNumbers} />
-      <DiffLine ln={2} text={SAMPLE_NEW[1]} kind="add" showLineNumbers={showLineNumbers} />
-      <DiffLine ln={3} text={SAMPLE_OLD[2]} kind="ctx" showLineNumbers={showLineNumbers} />
-    </div>
-  );
-}
-
-function AppearancePreview({
-  radius,
-  uiFontSize,
-  monoFont,
-}: {
-  radius: Radius;
-  uiFontSize: UiFontSize;
-  monoFont: MonoFont;
-}) {
-  return (
-    <div
-      className="overflow-hidden border border-border bg-card"
-      style={{ borderRadius: radius, fontSize: uiFontSize }}
-    >
-      <div className="flex h-7 items-center gap-1.5 border-b border-border px-2.5">
-        <span className="size-1.5 rounded-full bg-[color:var(--deleted)]/70" />
-        <span className="size-1.5 rounded-full bg-[color:var(--modified)]/70" />
-        <span className="size-1.5 rounded-full bg-[color:var(--added)]/70" />
-        <span className="ml-2 text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
-          stash · main
-        </span>
-      </div>
-      <div className="flex">
-        <div className="w-20 shrink-0 border-r border-border bg-background/60 p-2 text-[10px]">
-          <div
-            className="mb-1 truncate border border-border bg-accent px-1.5 py-1"
-            style={{ borderRadius: Math.max(0, radius - 1) }}
-          >
-            stash
-          </div>
-          <div className="truncate px-1.5 py-1 text-muted-foreground">api</div>
-          <div className="truncate px-1.5 py-1 text-muted-foreground">www</div>
-        </div>
-        <div className="min-w-0 flex-1 p-2.5">
-          <div className="mb-1.5 text-[11px] font-medium">Aparência</div>
-          <div className="mb-2 text-[10px] text-muted-foreground">Personalize o stash</div>
-          <div
-            className="flex items-center justify-center border border-border bg-foreground py-1.5 text-[9px] font-medium uppercase tracking-[0.1em] text-background"
-            style={{ borderRadius: radius }}
-          >
-            Botão
-          </div>
-          <div
-            className="mt-2 border border-border bg-background/60 p-1.5 font-mono text-[10px]"
-            style={{
-              borderRadius: radius,
-              fontFamily:
-                monoFont === "google"
-                  ? '"Google Sans Code", monospace'
-                  : monoFont === "jetbrains"
-                    ? '"JetBrains Mono", monospace'
-                    : monoFont === "fira"
-                      ? '"Fira Code", monospace'
-                      : monoFont === "ibm"
-                        ? '"IBM Plex Mono", monospace'
-                        : "ui-monospace, monospace",
-            }}
-          >
-            const ok = true
-          </div>
-        </div>
-      </div>
+      <DiffLine ln={1} text={SAMPLE_OLD[0]} kind="del" showLineNumbers={showLineNumbers} variant={variant} />
+      <DiffLine ln={1} text={SAMPLE_NEW[0]} kind="add" showLineNumbers={showLineNumbers} variant={variant} />
+      <DiffLine ln={2} text={SAMPLE_OLD[1]} kind="del" showLineNumbers={showLineNumbers} variant={variant} />
+      <DiffLine ln={2} text={SAMPLE_NEW[1]} kind="add" showLineNumbers={showLineNumbers} variant={variant} />
+      {variant !== "collapsed" && (
+        <DiffLine ln={3} text={SAMPLE_OLD[2]} kind="ctx" showLineNumbers={showLineNumbers} variant={variant} />
+      )}
     </div>
   );
 }
@@ -795,11 +735,13 @@ function DiffLine({
   text,
   kind,
   showLineNumbers,
+  variant = "default",
 }: {
   ln: number;
   text: string;
   kind: "add" | "del" | "ctx";
   showLineNumbers: boolean;
+  variant?: "default" | "inline" | "collapsed";
 }) {
   const bg =
     kind === "add"
@@ -814,14 +756,25 @@ function DiffLine({
       : kind === "del"
         ? "text-[color:var(--deleted)]"
         : "text-muted-foreground";
+  const inline = variant === "inline";
+  const accent =
+    inline && kind === "add"
+      ? "border-l-2 border-[color:var(--added)]"
+      : inline && kind === "del"
+        ? "border-l-2 border-[color:var(--deleted)]"
+        : inline
+          ? "border-l-2 border-transparent"
+          : "";
   return (
-    <div className={cn("flex items-start", bg)}>
+    <div className={cn("flex items-start", bg, accent)}>
       {showLineNumbers && (
         <span className="w-7 shrink-0 select-none border-r border-border px-1 text-right text-muted-foreground">
           {ln}
         </span>
       )}
-      <span className={cn("w-4 shrink-0 select-none px-1 text-center", signColor)}>{sign}</span>
+      {!inline && (
+        <span className={cn("w-4 shrink-0 select-none px-1 text-center", signColor)}>{sign}</span>
+      )}
       <span className="min-w-0 flex-1 overflow-hidden px-2">{text}</span>
     </div>
   );

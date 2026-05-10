@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Stash
+Comment=A minimal Git desktop client
+Exec=stash
+Icon=org.wails.Stash
+Terminal=false
+Categories=Development;
+Keywords=git;github;client;stash;
+StartupWMClass=org.wails.Stash
+StartupNotify=true

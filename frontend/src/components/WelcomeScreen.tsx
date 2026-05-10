@@ -1,20 +1,27 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Cloud, FolderGit2, FolderOpen, FolderSearch, GitBranch, Loader2, Plus } from "lucide-react";
+import { Cloud, FolderGit2, FolderOpen, FolderSearch, GitBranch, Loader2 } from "lucide-react";
 
 import { AsciiGlitch } from "@/components/AsciiGlitch";
 import { CloneRepoDialog } from "@/components/CloneRepoDialog";
-import { Input } from "@/components/ui/input";
+import { Logo } from "@/components/Logo";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { git } from "@/lib/git";
 import { useRepo } from "@/lib/repo-context";
-import { cn } from "@/lib/utils";
+import { useRepoOrgStore } from "@/lib/repo-org-store";
 
-export function WelcomeScreen() {
+interface WelcomeScreenProps {
+  targetCollectionId?: string | null;
+}
+
+export function WelcomeScreen({ targetCollectionId = null }: WelcomeScreenProps = {}) {
   const { repos, hydrated, setActivePath, addRepo } = useRepo();
-  const [pathInput, setPathInput] = useState("");
-  const [adding, setAdding] = useState(false);
+  const collections = useRepoOrgStore((s) => s.collections);
+  const assignToCollection = useRepoOrgStore((s) => s.assignToCollection);
+  const targetCollection = targetCollectionId
+    ? collections.find((c) => c.id === targetCollectionId) ?? null
+    : null;
   const [error, setError] = useState<string | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -27,6 +34,7 @@ export function WelcomeScreen() {
       const path = await git.pickRepoFolder();
       if (!path) return;
       await addRepo(path);
+      if (targetCollection) assignToCollection(path, targetCollection.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -34,23 +42,8 @@ export function WelcomeScreen() {
     }
   }
 
-  async function handleAdd() {
-    const trimmed = pathInput.trim();
-    if (!trimmed) return;
-    setError(null);
-    setAdding(true);
-    try {
-      await addRepo(trimmed);
-      setPathInput("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setAdding(false);
-    }
-  }
-
   return (
-    <div className="flex h-full w-full flex-1 items-start justify-center overflow-y-auto bg-background">
+    <div className="flex h-full w-full flex-1 items-start justify-center overflow-y-auto">
       <div className="w-full max-w-2xl px-8 py-12">
         <motion.header
           initial={{ opacity: 0, y: 8 }}
@@ -58,10 +51,19 @@ export function WelcomeScreen() {
           transition={{ duration: 0.24, ease: "easeOut" }}
           className="mb-8 flex flex-col items-center gap-3"
         >
+          <Logo className="h-16 w-auto" />
           <AsciiGlitch />
           <p className="text-center text-[13px] text-muted-foreground">
             Escolha um repositório para continuar, ou adicione um novo.
           </p>
+          {targetCollection && (
+            <div className="flex items-center gap-2 border border-border bg-card px-3 py-1.5 text-[11px] text-muted-foreground">
+              <span className="text-[10px] uppercase tracking-[0.12em]">
+                Adicionando em
+              </span>
+              <span className="font-mono text-foreground">{targetCollection.name}</span>
+            </div>
+          )}
         </motion.header>
 
         <motion.section
@@ -158,29 +160,6 @@ export function WelcomeScreen() {
             Adicionar novo
           </h2>
           <div className="space-y-2">
-            <div className="flex items-stretch">
-              <Input
-                value={pathInput}
-                onChange={(e) => setPathInput(e.target.value)}
-                placeholder="/caminho/do/repo"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleAdd();
-                }}
-                className="h-9 border-r-0 text-[12px]"
-                disabled={adding}
-              />
-              <button
-                type="button"
-                disabled={adding || !pathInput.trim()}
-                onClick={() => void handleAdd()}
-                className={cn(
-                  "flex h-9 shrink-0 items-center gap-1.5 border border-border px-3 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40",
-                )}
-              >
-                {adding ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-                Adicionar
-              </button>
-            </div>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -218,6 +197,7 @@ export function WelcomeScreen() {
           onClose={() => setCloneOpen(false)}
           onCloned={async (path) => {
             await addRepo(path);
+            if (targetCollection) assignToCollection(path, targetCollection.id);
           }}
         />
       </div>
