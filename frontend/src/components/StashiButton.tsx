@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { Logo } from "@/components/Logo";
 import { Mascot } from "@/components/Mascot";
@@ -29,8 +29,8 @@ const JOKES = [
   "— Você manja de recursão?\n— Pra entender recursão, primeiro você precisa manjar de recursão.",
   "Programador não dorme. Faz hot reload da consciência.",
   "Documentação é tipo academia: todo mundo acha importante, ninguém vai.",
-  'Diz a lenda que existe um dev que escreveu testes antes do código. Mas é só lenda.',
-  "JavaScript me ensinou que `0 == \"0\"` mas `0 == \"\"` também. E que confiança é frágil.",
+  "Diz a lenda que existe um dev que escreveu testes antes do código. Mas é só lenda.",
+  'JavaScript me ensinou que `0 == "0"` mas `0 == ""` também. E que confiança é frágil.',
   "Por que devs preferem dark mode? Porque luz atrai bugs.",
   "Estimativa de prazo é tipo previsão do tempo: ninguém acredita, mas todo mundo pergunta.",
   '— "É rapidinho?"\n— Nada que envolva data e fuso horário é rapidinho.',
@@ -65,11 +65,10 @@ function pickJoke(): string {
 
 export function StashiButton() {
   const [open, setOpen] = useState(false);
-  const [seed, setSeed] = useState(0);
-  const joke = useMemo(() => pickJoke(), [seed]);
+  const [joke, setJoke] = useState(pickJoke);
 
   function handleOpenChange(next: boolean) {
-    if (next) setSeed((s) => s + 1);
+    if (next) setJoke(pickJoke());
     setOpen(next);
   }
 
@@ -95,18 +94,13 @@ export function StashiButton() {
           </DialogHeader>
 
           <div className="flex flex-col items-center gap-4 py-2">
-            <Mascot
-              size="md"
-              glitchIntervalMs={70}
-              glitchIntensity={4}
-              className="scale-110"
-            />
+            <Mascot size="md" glitchIntervalMs={70} glitchIntensity={4} className="scale-110" />
             <p className="max-w-[32ch] whitespace-pre-line text-center text-[12px] text-foreground">
               {joke}
             </p>
             <button
               type="button"
-              onClick={() => setSeed((s) => s + 1)}
+              onClick={() => setJoke(pickJoke())}
               className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:text-foreground"
             >
               Conta outra

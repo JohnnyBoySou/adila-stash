@@ -24,7 +24,7 @@ func main() {
 		Description: "A minimal Git desktop client",
 		Icon:        embeddedAppIcon,
 		Linux: application.LinuxOptions{
-			ProgramName: "stash",
+			ProgramName: "org.adila.Stash",
 		},
 		// Ordem importa: Config sobe primeiro para que GitHub já encontre
 		// o token persistido no startup. Shutdown roda na ordem reversa.

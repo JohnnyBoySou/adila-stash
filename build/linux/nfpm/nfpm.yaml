@@ -20,9 +20,9 @@ contents:
   - src: "./bin/stash"
     dst: "/usr/local/bin/stash"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/512x512/apps/org.wails.Stash.png"
-  - src: "./build/linux/org.wails.Stash.desktop"
-    dst: "/usr/share/applications/org.wails.Stash.desktop"
+    dst: "/usr/share/icons/hicolor/512x512/apps/org.adila.Stash.png"
+  - src: "./build/linux/org.adila.Stash.desktop"
+    dst: "/usr/share/applications/org.adila.Stash.desktop"
 
 # Default dependencies for Debian 12/Ubuntu 22.04+ with WebKit 4.1
 depends:

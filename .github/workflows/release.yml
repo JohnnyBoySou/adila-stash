@@ -97,11 +97,11 @@ jobs:
           mkdir -p dist/pkg
           cp bin/stash dist/pkg/stash
           cp build/appicon.png dist/pkg/stash.png
-          cp build/linux/org.wails.Stash.desktop dist/pkg/org.wails.Stash.desktop
+          cp build/linux/org.adila.Stash.desktop dist/pkg/org.adila.Stash.desktop
 
           TAR="stash-${VERSION}-linux-amd64.tar.gz"
           tar -C dist/pkg -czf "dist/${TAR}" \
-            stash stash.png org.wails.Stash.desktop
+            stash stash.png org.adila.Stash.desktop
           (cd dist && sha256sum "${TAR}" > "${TAR}.sha256")
           echo "tar=${TAR}" >> "$GITHUB_OUTPUT"
 
