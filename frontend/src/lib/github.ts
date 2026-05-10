@@ -186,6 +186,12 @@ export const github = {
     GitHubAPI.ListPullRequests(owner, repo, state) as unknown as Promise<PullRequestSummary[]>,
   getPullRequest: (owner: string, repo: string, number: number) =>
     GitHubAPI.GetPullRequest(owner, repo, number) as unknown as Promise<PullRequestDetail>,
+  mergePullRequest: (
+    owner: string,
+    repo: string,
+    number: number,
+    method: "merge" | "squash" | "rebase" = "merge",
+  ) => GitHubAPI.MergePullRequest(owner, repo, number, method) as unknown as Promise<void>,
   listIssueComments: (owner: string, repo: string, number: number) =>
     GitHubAPI.ListIssueComments(owner, repo, number) as unknown as Promise<IssueComment[]>,
   createIssueComment: (owner: string, repo: string, number: number, body: string) =>

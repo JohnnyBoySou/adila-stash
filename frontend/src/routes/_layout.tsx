@@ -42,7 +42,7 @@ function Shell() {
 
   useEffect(() => {
     if (!activePath) return;
-    if (location.pathname === "/welcome" || location.pathname === "/") {
+    if (location.pathname === "/") {
       void router.navigate({ to: "/changes" });
     }
   }, [activePath, location.pathname, router]);

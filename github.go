@@ -629,6 +629,33 @@ func (g *GitHub) GetPullRequest(owner, repo string, number int) (*PullRequestDet
 	}, nil
 }
 
+// MergePullRequest mescla um PR. method aceita "merge", "squash" ou "rebase".
+// Vazio assume "merge".
+func (g *GitHub) MergePullRequest(owner, repo string, number int, method string) error {
+	if owner == "" || repo == "" || number <= 0 {
+		return errors.New("parâmetros incompletos para mesclar PR")
+	}
+	switch method {
+	case "", "merge", "squash", "rebase":
+	default:
+		return fmt.Errorf("merge_method inválido: %q", method)
+	}
+	if method == "" {
+		method = "merge"
+	}
+	payload := map[string]any{"merge_method": method}
+	resp, err := g.apiRequest("PUT", fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", owner, repo, number), payload)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("github merge PR: %s — %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
 // IssueComment é um comentário de timeline (não atrelado ao diff).
 type IssueComment struct {
 	ID        int64  `json:"id"`

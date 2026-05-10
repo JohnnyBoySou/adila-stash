@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Browser } from "@wailsio/runtime";
 import {
   AlertCircle,
   ArrowLeft,
   Check,
+  ChevronDown,
   ExternalLink,
   GitCommit,
   GitMerge,
@@ -148,9 +149,11 @@ function PullRequestDetailView() {
         detail={detail}
         owner={owner}
         repo={repo}
+        number={number}
         loading={loading}
         onBack={() => void navigate({ to: "/pull-requests" })}
         onRefresh={() => void refresh()}
+        onMerged={() => void refresh()}
       />
       <div className="flex shrink-0 items-center border-b border-border bg-card text-[11px]">
         <TabButton active={tab === "about"} onClick={() => setTab("about")}>
@@ -206,18 +209,23 @@ function Header({
   detail,
   owner,
   repo,
+  number,
   loading,
   onBack,
   onRefresh,
+  onMerged,
 }: {
   detail: PullRequestDetail;
   owner: string;
   repo: string;
+  number: number;
   loading: boolean;
   onBack: () => void;
   onRefresh: () => void;
+  onMerged: () => void;
 }) {
   const status = stateBadge(detail);
+  const showMerge = detail.state === "open" && !detail.merged;
   return (
     <div className="shrink-0 border-b border-border bg-card">
       <div className="flex h-9 items-center gap-2 px-3 text-[11px]">
@@ -245,6 +253,16 @@ function Header({
         <span className="hidden shrink-0 truncate text-muted-foreground/60 sm:inline" title={`${owner}/${repo}`}>
           {owner}/{repo}
         </span>
+        {showMerge && (
+          <MergeButton
+            owner={owner}
+            repo={repo}
+            number={number}
+            mergeable={detail.mergeable}
+            mergeableState={detail.mergeableState}
+            onMerged={onMerged}
+          />
+        )}
         <button
           type="button"
           onClick={() => void Browser.OpenURL(detail.htmlUrl)}
@@ -267,6 +285,134 @@ function Header({
           )}
         </button>
       </div>
+    </div>
+  );
+}
+
+type MergeMethod = "merge" | "squash" | "rebase";
+
+function methodLabel(m: MergeMethod): string {
+  switch (m) {
+    case "merge":
+      return "Criar merge commit";
+    case "squash":
+      return "Squash & merge";
+    case "rebase":
+      return "Rebase & merge";
+  }
+}
+
+function MergeButton({
+  owner,
+  repo,
+  number,
+  mergeable,
+  mergeableState,
+  onMerged,
+}: {
+  owner: string;
+  repo: string;
+  number: number;
+  mergeable: boolean | null;
+  mergeableState: string;
+  onMerged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [method, setMethod] = useState<MergeMethod>("merge");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const blocked = mergeable === false;
+  const dirty = mergeableState === "dirty" || mergeableState === "blocked";
+
+  const merge = async (m: MergeMethod) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await github.mergePullRequest(owner, repo, number, m);
+      setOpen(false);
+      onMerged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div ref={ref} className="relative flex shrink-0 items-stretch">
+      <button
+        type="button"
+        disabled={busy || blocked}
+        onClick={() => void merge(method)}
+        className={cn(
+          "flex h-6 items-center gap-1.5 border px-2 transition-colors",
+          "border-emerald-600/40 bg-emerald-600/10 text-emerald-500",
+          "hover:bg-emerald-600/20 hover:text-emerald-400",
+          "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-emerald-600/10",
+        )}
+        title={
+          blocked
+            ? `Não é possível mesclar (${mergeableState || "conflitos"})`
+            : `Mesclar via ${methodLabel(method)}`
+        }
+      >
+        {busy ? <Loader2 className="size-3 animate-spin" /> : <GitMerge className="size-3" />}
+        <span className="font-medium">Mesclar</span>
+      </button>
+      <button
+        type="button"
+        disabled={busy || blocked}
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Escolher método de merge"
+        className={cn(
+          "flex h-6 items-center border border-l-0 px-1 transition-colors",
+          "border-emerald-600/40 bg-emerald-600/10 text-emerald-500",
+          "hover:bg-emerald-600/20 hover:text-emerald-400",
+          "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-emerald-600/10",
+        )}
+      >
+        <ChevronDown className="size-3" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 flex min-w-[200px] flex-col border border-border bg-popover py-1 text-[11px] shadow-md">
+          {(["merge", "squash", "rebase"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setMethod(m);
+                void merge(m);
+              }}
+              className="flex items-center justify-between gap-2 px-2 py-1.5 text-left transition-colors hover:bg-accent disabled:opacity-40"
+            >
+              <span>{methodLabel(m)}</span>
+              {method === m && <Check className="size-3 text-muted-foreground" />}
+            </button>
+          ))}
+          {dirty && (
+            <div className="border-t border-border px-2 py-1 text-[10px] text-muted-foreground">
+              Estado: {mergeableState}
+            </div>
+          )}
+          {err && (
+            <div className="border-t border-border px-2 py-1 text-destructive">{err}</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
